@@ -38,7 +38,7 @@ interface Ruta {
   fecha: string;
 }
 
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export default function Dashboard() {
 
@@ -143,8 +143,8 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const [resVehiculos, resRutas] = await Promise.all([
-        fetch("http://localhost:8080/api/vehiculos"),
-        fetch("http://localhost:8080/api/rutas")
+        fetch(`${API_URL}/api/vehiculos`),
+        fetch(`${API_URL}/api/rutas`)
       ]);
 
       if (resVehiculos.ok) {
@@ -172,7 +172,7 @@ export default function Dashboard() {
   const handleCrearVehiculo = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://localhost:8080/api/vehiculos", {
+      const res = await fetch(`${API_URL}/api/vehiculos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nuevoVehiculo)
@@ -195,7 +195,7 @@ export default function Dashboard() {
       return;
     }
     try {
-      const res = await fetch("http://localhost:8080/api/rutas", {
+      const res = await fetch(`${API_URL}/api/rutas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...nuevaRuta, estado: 'PLANIFICADA' })
@@ -214,7 +214,7 @@ export default function Dashboard() {
     setRutas(prev => prev.map(r => r.id === ruta.id ? { ...r, estado: nuevoEstado } : r));
 
     try {
-      await fetch(`http://localhost:8080/api/rutas/${ruta.id}`, {
+      await fetch(`${API_URL}/api/rutas/${ruta.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...ruta, estado: nuevoEstado })
@@ -233,7 +233,7 @@ export default function Dashboard() {
     setRutas(prev => prev.filter(r => r.id !== ruta.id));
 
     try {
-      await fetch(`http://localhost:8080/api/rutas/${ruta.id}`, { method: 'DELETE' }).catch(e => console.warn("Backend no respondió, usando estado local"));
+      await fetch(`${API_URL}/api/rutas/${ruta.id}`, { method: 'DELETE' }).catch(e => console.warn("Backend no respondió, usando estado local"));
       toast.success("Ruta eliminada correctamente");
     } catch (error) {
       setRutas(rutasPrevias);
@@ -248,7 +248,7 @@ export default function Dashboard() {
         label: "Eliminar",
         onClick: async () => {
           try {
-            const res = await fetch(`http://localhost:8080/api/vehiculos/${id}`, { method: 'DELETE' });
+            const res = await fetch(`${API_URL}/api/vehiculos/${id}`, { method: 'DELETE' });
             if (res.ok) {
               toast.success("Vehículo eliminado correctamente");
               setVehiculos((prev) => prev.filter(v => v.id !== id));
