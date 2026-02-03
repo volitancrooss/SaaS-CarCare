@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import styles from "./page.module.css";
 import BackgroundMeteors from "@/componentes/BackgroundMeteors";
@@ -41,6 +42,7 @@ interface Ruta {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export default function Dashboard() {
+  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'flota' | 'nuevo' | 'rutas' | 'estadisticas'>('flota');
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
@@ -314,14 +316,22 @@ export default function Dashboard() {
           {activeTab === 'flota' && (
             <div className={styles.grid}>
               {vehiculos.map((v) => (
-                <div key={v.id} className={styles.card}>
+                <div
+                  key={v.id}
+                  className={styles.card}
+                  onClick={() => router.push(`/vehiculo/${v.id}`)}
+                  style={{ cursor: 'pointer' }}
+                >
                   <div className={styles.cardHeader}>
                     <div>
                       <h2 className={styles.cardTitle}>{v.marca} {v.modelo}</h2>
                       <span className={styles.cardSubtitle}>Matrícula: {v.matricula}</span>
                     </div>
                     <button
-                      onClick={() => handleEliminarVehiculo(v.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEliminarVehiculo(v.id);
+                      }}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1.2rem' }}
                       title="Eliminar Vehículo"
                     >
