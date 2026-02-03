@@ -41,10 +41,11 @@ export default function MapTracking({ origin, destination, current, isDeviated }
             center={current}
             zoom={13}
             style={{ height: "100%", width: "100%", borderRadius: "12px", border: "2px solid rgba(255,255,255,0.1)" }}
+            attributionControl={false}
         >
             <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             />
 
             {/* Starting point */}

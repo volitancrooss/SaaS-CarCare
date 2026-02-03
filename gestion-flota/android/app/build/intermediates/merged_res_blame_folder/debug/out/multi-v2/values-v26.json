@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.ecofleet.app-mergeDebugResources-29:/values-v26/values-v26.xml",
+            "outputFile": "com.ecofleet.app-mergeDebugResources-31:/values-v26/values-v26.xml",
             "map": [
                 {
                     "source": "C:\\Users\\volit\\.gradle\\caches\\9.0-milestone-1\\transforms\\7ff9ee7482a8dc9b9850645cff3f693b\\transformed\\appcompat-1.6.1\\res\\values-v26\\values-v26.xml",

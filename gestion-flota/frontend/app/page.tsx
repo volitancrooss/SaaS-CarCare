@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import styles from "./page.module.css";
 import BackgroundMeteors from "@/componentes/BackgroundMeteors";
+import LocationInput from "@/componentes/LocationInput";
 import {
   BarChart,
   Bar,
@@ -37,6 +38,10 @@ interface Ruta {
   estado: string;
   vehiculoId: string;
   fecha: string;
+  latitudOrigen?: number;
+  longitudOrigen?: number;
+  latitudDestino?: number;
+  longitudDestino?: number;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
@@ -196,45 +201,66 @@ export default function Dashboard() {
       toast.warning("⚠️ Debes asignar un vehículo a la ruta");
       return;
     }
-    const demoCoords = {
-      Madrid: { lat: 40.4168, lng: -3.7038 },
-      Barcelona: { lat: 41.3851, lng: 2.1734 },
-      Valencia: { lat: 39.4699, lng: -0.3763 },
-      Sevilla: { lat: 37.3891, lng: -5.9845 }
-    };
-
-    // Helper to get coords or random one near Spain
-    const getCoords = (city: string) => {
-      const key = Object.keys(demoCoords).find(k => city.toLowerCase().includes(k.toLowerCase())) as keyof typeof demoCoords;
-      if (key) return demoCoords[key];
-      return { lat: 36 + Math.random() * 7, lng: -9 + Math.random() * 12 };
-    };
-
-    const originCoords = getCoords(nuevaRuta.origen || "");
-    const destCoords = getCoords(nuevaRuta.destino || "");
-
-    try {
-      const res = await fetch(`${API_URL}/api/rutas`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...nuevaRuta,
-          estado: 'PLANIFICADA',
-          latitudOrigen: originCoords.lat,
-          longitudOrigen: originCoords.lng,
-          latitudDestino: destCoords.lat,
-          longitudDestino: destCoords.lng,
-          latitudActual: originCoords.lat,
-          longitudActual: originCoords.lng
-        })
-      });
-      if (res.ok) {
-        toast.success("Ruta planificada con éxito");
-        cargarDatos();
+    // Geodoficación Real mediante Nominatim (OpenStreetMap)
+    const geocode = async (query: string) => {
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+        const data = await response.json();
+        if (data && data.length > 0) {
+          return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+        }
+      } catch (error) {
+        console.error("Error en geocodificación:", error);
       }
-    } catch (error) {
-      toast.error("Error al crear ruta");
-    }
+      return null;
+    };
+
+    toast.promise(
+      (async () => {
+        let originCoords = { lat: nuevaRuta.latitudOrigen, lng: nuevaRuta.longitudOrigen };
+        let destCoords = { lat: nuevaRuta.latitudDestino, lng: nuevaRuta.longitudDestino };
+
+        // Si no se seleccionó sugerencia, buscar manualmente
+        if (!originCoords.lat || !originCoords.lng) {
+          const res = await geocode(nuevaRuta.origen || "");
+          if (res) originCoords = res;
+        }
+        if (!destCoords.lat || !destCoords.lng) {
+          const res = await geocode(nuevaRuta.destino || "");
+          if (res) destCoords = res;
+        }
+
+        if (!originCoords.lat || !destCoords.lat) {
+          throw new Error("No se pudo localizar el origen o el destino. Por favor, selecciona una sugerencia.");
+        }
+
+        const res = await fetch(`${API_URL}/api/rutas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...nuevaRuta,
+            estado: 'PLANIFICADA',
+            latitudOrigen: originCoords.lat,
+            longitudOrigen: originCoords.lng,
+            latitudDestino: destCoords.lat,
+            longitudDestino: destCoords.lng,
+            latitudActual: originCoords.lat,
+            longitudActual: originCoords.lng
+          })
+        });
+
+        if (!res.ok) throw new Error("Error al guardar la ruta en el servidor");
+
+        cargarDatos();
+        setNuevaRuta({ origen: "", destino: "", distanciaEstimadaKm: 0, fecha: new Date().toISOString().split("T")[0], vehiculoId: "" });
+        return res.json();
+      })(),
+      {
+        loading: 'Procesando ubicaciones...',
+        success: 'Ruta planificada con éxito con coordenadas precisas',
+        error: (err) => `Error: ${err.message}`,
+      }
+    );
   };
 
   const handleCambioEstadoRuta = async (ruta: Ruta, nuevoEstado: string) => {
@@ -488,16 +514,29 @@ export default function Dashboard() {
               <div className={styles.formContainer}>
                 <h3 style={{ marginBottom: '1rem', color: 'var(--accent)' }}>Nueva Ruta</h3>
                 <form onSubmit={handleCrearRuta}>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Origen</label>
-                    <input className={styles.input} type="text" placeholder="Madrid" required
-                      value={nuevaRuta.origen} onChange={e => setNuevaRuta({ ...nuevaRuta, origen: e.target.value })} />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Destino</label>
-                    <input className={styles.input} type="text" placeholder="Barcelona" required
-                      value={nuevaRuta.destino} onChange={e => setNuevaRuta({ ...nuevaRuta, destino: e.target.value })} />
-                  </div>
+                  <LocationInput
+                    label="Origen"
+                    placeholder="Ej: Madrid, Calle Mayor..."
+                    value={nuevaRuta.origen || ""}
+                    onChange={(val, coords) => setNuevaRuta({
+                      ...nuevaRuta,
+                      origen: val,
+                      latitudOrigen: coords?.lat,
+                      longitudOrigen: coords?.lng
+                    })}
+                  />
+
+                  <LocationInput
+                    label="Destino"
+                    placeholder="Ej: Barcelona, Puerto..."
+                    value={nuevaRuta.destino || ""}
+                    onChange={(val, coords) => setNuevaRuta({
+                      ...nuevaRuta,
+                      destino: val,
+                      latitudDestino: coords?.lat,
+                      longitudDestino: coords?.lng
+                    })}
+                  />
                   <div className={styles.formGroup}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                       <label className={styles.label} style={{ marginBottom: 0 }}>Distancia Estimada</label>
@@ -536,78 +575,148 @@ export default function Dashboard() {
               <div>
                 <h3 style={{ marginBottom: '1rem' }}>Rutas Activas</h3>
                 <div className={styles.grid}>
-                  {rutas.map(r => (
-                    <div
-                      key={r.id}
-                      className={styles.card}
-                      onClick={() => router.push(`/ruta/${r.id}`)}
-                      style={{
-                        borderLeft: `4px solid ${r.estado === 'COMPLETADA' ? '#22c55e' : 'var(--accent)'}`,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <div className={styles.cardHeader}>
-                        <div>
-                          <span style={{ fontSize: '0.8rem', color: '#888', display: 'block', marginBottom: '4px' }}>{r.fecha}</span>
-                          <h4 className={styles.cardTitle}>{r.origen} ➝ {r.destino}</h4>
+                  {rutas.map(r => {
+                    const esEnCurso = r.estado === 'EN_CURSO';
+                    const esCompletada = r.estado === 'COMPLETADA';
+
+                    return (
+                      <div
+                        key={r.id}
+                        className={styles.card}
+                        onClick={() => router.push(`/ruta/${r.id}`)}
+                        style={{
+                          borderLeft: `6px solid ${esCompletada ? '#22c55e' : (esEnCurso ? 'var(--accent)' : '#4b5563')}`,
+                          background: 'linear-gradient(145deg, rgba(30,30,40,0.95), rgba(20,20,25,0.9))',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                          position: 'relative',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <div className={styles.cardHeader} style={{ marginBottom: '1.2rem' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
+                              <span style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: '700', fontFamily: 'monospace' }}>#{r.id?.slice(-6).toUpperCase()}</span>
+                              <span style={{ color: '#333' }}>•</span>
+                              <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{r.fecha}</span>
+                            </div>
+                            <h4 className={styles.cardTitle} style={{
+                              fontSize: '1rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.6rem',
+                              width: '100%',
+                              overflow: 'hidden'
+                            }}>
+                              <span style={{
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '140px'
+                              }} title={r.origen}>{r.origen}</span>
+                              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ opacity: 0.3, flexShrink: 0 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                              <span style={{
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '140px'
+                              }} title={r.destino}>{r.destino}</span>
+                            </h4>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem', flexShrink: 0 }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEliminarRuta(r);
+                              }}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: "#ef4444",
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.2s'
+                              }}
+                              title="Eliminar Ruta"
+                            >
+                              ✕
+                            </button>
+
+                            <select
+                              value={r.estado}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleCambioEstadoRuta(r, e.target.value);
+                              }}
+                              className={styles.badge}
+                              style={{
+                                background: esCompletada ? 'rgba(34, 197, 94, 0.1)' : (esEnCurso ? 'rgba(6, 182, 212, 0.1)' : 'rgba(255,255,255,0.05)'),
+                                color: esCompletada ? '#4ade80' : (esEnCurso ? '#22d3ee' : '#9ca3af'),
+                                border: `1px solid ${esCompletada ? 'rgba(34, 197, 94, 0.2)' : (esEnCurso ? 'rgba(6, 182, 212, 0.2)' : 'rgba(255,255,255,0.1)')}`,
+                                cursor: 'pointer',
+                                padding: '0.3rem 0.6rem',
+                                borderRadius: '20px',
+                                fontWeight: '800',
+                                fontSize: '0.65rem',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="PLANIFICADA" style={{ color: 'black' }}>PLANIFICADA</option>
+                              <option value="EN_CURSO" style={{ color: 'black' }}>EN CURSO</option>
+                              <option value="COMPLETADA" style={{ color: 'black' }}>COMPLETADA</option>
+                            </select>
+                          </div>
                         </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEliminarRuta(r);
-                          }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1.2rem' }}
-                          title="Eliminar Ruta"
-                        >
-                          X
-                        </button>
-                        &nbsp;
-                        <select
-                          value={r.estado}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleCambioEstadoRuta(r, e.target.value);
-                          }}
-                          className={styles.badge}
-                          style={{
-                            background: r.estado === 'COMPLETADA' ? 'rgba(34, 197, 94, 0.2)' : (r.estado === 'EN_CURSO' ? 'rgba(234, 179, 8, 0.2)' : 'rgba(59, 130, 246, 0.2)'),
-                            color: r.estado === 'COMPLETADA' ? '#22c55e' : (r.estado === 'EN_CURSO' ? '#facc15' : '#60a5fa'),
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            cursor: 'pointer',
-                            padding: '0.2rem 0.5rem',
-                            borderRadius: '6px',
-                            fontWeight: 'bold',
-                            outline: 'none'
-                          }}
-                        >
-                          <option value="PLANIFICADA" style={{ color: 'black' }}>PLANIFICADA</option>
-                          <option value="EN_CURSO" style={{ color: 'black' }}>EN CURSO</option>
-                          <option value="COMPLETADA" style={{ color: 'black' }}>COMPLETADA</option>
-                        </select>
+
+                        {esEnCurso && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.2rem', background: 'rgba(34, 197, 94, 0.05)', padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.1)' }}>
+                            <span style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              backgroundColor: '#3bf63b',
+                              boxShadow: '0 0 10px #3bf63b',
+                              animation: 'pulse 1.5s infinite'
+                            }}></span>
+                            <span style={{ fontSize: '0.7rem', color: '#3bf63b', fontWeight: '800', letterSpacing: '0.05em' }}>RASTREO ACTIVO</span>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.8rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                          <div>
+                            <span style={{ display: 'block', fontSize: '0.6rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.2rem' }}>Distancia</span>
+                            <span style={{ fontSize: '1rem', fontWeight: '800', color: '#fff' }}>{r.distanciaEstimadaKm} <span style={{ fontSize: '0.7rem', color: '#4b5563' }}>KM</span></span>
+                          </div>
+                          <div style={{ textAlign: 'right', maxWidth: '120px' }}>
+                            <span style={{ display: 'block', fontSize: '0.6rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.2rem' }}>Vehículo</span>
+                            <span style={{
+                              fontSize: '0.85rem',
+                              fontWeight: '700',
+                              color: 'var(--accent)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: 'block'
+                            }}>
+                              {r.vehiculoId?.length > 10 ? `...${r.vehiculoId.slice(-8)}` : r.vehiculoId}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-
-                      {r.estado === 'EN_CURSO' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                          <span style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: '#3bf63b',
-                            boxShadow: '0 0 10px #3bf63b',
-                            animation: 'pulse 1.5s infinite'
-                          }}></span>
-                          <span style={{ fontSize: '0.75rem', color: '#3bf63b', fontWeight: 'bold' }}>LIVE TRACKING ACTIVE</span>
-                        </div>
-                      )}
-
-                      <p className={styles.statLabel}>Distancia: {r.distanciaEstimadaKm} km</p>
-                      <small className={styles.statLabel} style={{ display: 'block', marginTop: '0.5rem' }}>
-                        ID Vehículo: {r.vehiculoId}
-                      </small>
+                    );
+                  })}
+                  {rutas.length === 0 && (
+                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', background: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '2px dashed rgba(255,255,255,0.05)' }}>
+                      <p style={{ color: 'var(--secondary)' }}>No hay rutas planificadas.</p>
                     </div>
-                  ))}
-                  {rutas.length === 0 && <p style={{ color: 'var(--secondary)' }}>No hay rutas planificadas.</p>}
+                  )}
                 </div>
               </div>
             </div>
