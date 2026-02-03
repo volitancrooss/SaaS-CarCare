@@ -37,11 +37,18 @@ public class RutaController {
     public Ruta actualizarRuta(@PathVariable String id, @RequestBody Ruta rutaActualizada) {
         return rutaRepository.findById(id)
                 .map(ruta -> {
-                    ruta.setEstado(rutaActualizada.getEstado());
-                    // Puedes actualizar otros campos si es necesario
+                    if (rutaActualizada.getEstado() != null) ruta.setEstado(rutaActualizada.getEstado());
+                    if (rutaActualizada.getLatitudActual() != null) ruta.setLatitudActual(rutaActualizada.getLatitudActual());
+                    if (rutaActualizada.getLongitudActual() != null) ruta.setLongitudActual(rutaActualizada.getLongitudActual());
+                    if (rutaActualizada.getDesviado() != null) ruta.setDesviado(rutaActualizada.getDesviado());
                     return rutaRepository.save(ruta);
                 })
-                .orElse(null); // O lanzar excepción
+                .orElse(null);
+    }
+
+    @GetMapping("/{id}")
+    public Ruta obtenerRuta(@PathVariable String id) {
+        return rutaRepository.findById(id).orElse(null);
     }
 
     @DeleteMapping("/{id}")
