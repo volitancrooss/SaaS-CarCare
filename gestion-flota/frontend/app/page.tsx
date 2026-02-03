@@ -196,11 +196,37 @@ export default function Dashboard() {
       toast.warning("⚠️ Debes asignar un vehículo a la ruta");
       return;
     }
+    const demoCoords = {
+      Madrid: { lat: 40.4168, lng: -3.7038 },
+      Barcelona: { lat: 41.3851, lng: 2.1734 },
+      Valencia: { lat: 39.4699, lng: -0.3763 },
+      Sevilla: { lat: 37.3891, lng: -5.9845 }
+    };
+
+    // Helper to get coords or random one near Spain
+    const getCoords = (city: string) => {
+      const key = Object.keys(demoCoords).find(k => city.toLowerCase().includes(k.toLowerCase())) as keyof typeof demoCoords;
+      if (key) return demoCoords[key];
+      return { lat: 36 + Math.random() * 7, lng: -9 + Math.random() * 12 };
+    };
+
+    const originCoords = getCoords(nuevaRuta.origen || "");
+    const destCoords = getCoords(nuevaRuta.destino || "");
+
     try {
       const res = await fetch(`${API_URL}/api/rutas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...nuevaRuta, estado: 'PLANIFICADA' })
+        body: JSON.stringify({
+          ...nuevaRuta,
+          estado: 'PLANIFICADA',
+          latitudOrigen: originCoords.lat,
+          longitudOrigen: originCoords.lng,
+          latitudDestino: destCoords.lat,
+          longitudDestino: destCoords.lng,
+          latitudActual: originCoords.lat,
+          longitudActual: originCoords.lng
+        })
       });
       if (res.ok) {
         toast.success("Ruta planificada con éxito");
@@ -511,14 +537,25 @@ export default function Dashboard() {
                 <h3 style={{ marginBottom: '1rem' }}>Rutas Activas</h3>
                 <div className={styles.grid}>
                   {rutas.map(r => (
-                    <div key={r.id} className={styles.card} style={{ borderLeft: `4px solid ${r.estado === 'COMPLETADA' ? '#22c55e' : 'var(--accent)'}` }}>
+                    <div
+                      key={r.id}
+                      className={styles.card}
+                      onClick={() => router.push(`/ruta/${r.id}`)}
+                      style={{
+                        borderLeft: `4px solid ${r.estado === 'COMPLETADA' ? '#22c55e' : 'var(--accent)'}`,
+                        cursor: 'pointer'
+                      }}
+                    >
                       <div className={styles.cardHeader}>
                         <div>
                           <span style={{ fontSize: '0.8rem', color: '#888', display: 'block', marginBottom: '4px' }}>{r.fecha}</span>
                           <h4 className={styles.cardTitle}>{r.origen} ➝ {r.destino}</h4>
                         </div>
                         <button
-                          onClick={() => handleEliminarRuta(r)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEliminarRuta(r);
+                          }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1.2rem' }}
                           title="Eliminar Ruta"
                         >
@@ -527,7 +564,11 @@ export default function Dashboard() {
                         &nbsp;
                         <select
                           value={r.estado}
-                          onChange={(e) => handleCambioEstadoRuta(r, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleCambioEstadoRuta(r, e.target.value);
+                          }}
                           className={styles.badge}
                           style={{
                             background: r.estado === 'COMPLETADA' ? 'rgba(34, 197, 94, 0.2)' : (r.estado === 'EN_CURSO' ? 'rgba(234, 179, 8, 0.2)' : 'rgba(59, 130, 246, 0.2)'),
@@ -545,6 +586,21 @@ export default function Dashboard() {
                           <option value="COMPLETADA" style={{ color: 'black' }}>COMPLETADA</option>
                         </select>
                       </div>
+
+                      {r.estado === 'EN_CURSO' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                          <span style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: '#3bf63b',
+                            boxShadow: '0 0 10px #3bf63b',
+                            animation: 'pulse 1.5s infinite'
+                          }}></span>
+                          <span style={{ fontSize: '0.75rem', color: '#3bf63b', fontWeight: 'bold' }}>LIVE TRACKING ACTIVE</span>
+                        </div>
+                      )}
+
                       <p className={styles.statLabel}>Distancia: {r.distanciaEstimadaKm} km</p>
                       <small className={styles.statLabel} style={{ display: 'block', marginTop: '0.5rem' }}>
                         ID Vehículo: {r.vehiculoId}
