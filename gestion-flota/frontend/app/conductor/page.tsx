@@ -16,7 +16,8 @@ interface Ruta {
     fecha: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+// Forzamos la URL de producción como fallback principal para evitar fallos en el móvil
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://saas-carcare-production.up.railway.app";
 
 export default function ConductorDashboard() {
     const [rutas, setRutas] = useState<Ruta[]>([]);
@@ -30,8 +31,9 @@ export default function ConductorDashboard() {
                 // Filter only routes that are planned or in progress
                 setRutas(data.filter((r: Ruta) => r.estado !== 'COMPLETADA'));
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error("Error cargando rutas:", err);
+            toast.error("Error de conexión con el servidor");
         } finally {
             setLoading(false);
         }

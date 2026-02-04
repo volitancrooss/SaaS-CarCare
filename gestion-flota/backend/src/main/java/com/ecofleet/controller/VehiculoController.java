@@ -10,7 +10,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/vehiculos")
-@CrossOrigin(origins = "http://localhost:3000") // Permitir peticiones desde el frontend
 public class VehiculoController {
 
     @Autowired

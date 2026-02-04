@@ -34,8 +34,8 @@ public class TrackingService extends Service {
     private String rutaId;
     private static final String TAG = "TrackingService";
 
-    // URL de tu backend - Usamos 10.0.2.2 para el emulador o la URL de Railway
-    private String API_URL = "http://10.0.2.2:8080"; // Cambiar por URL real si es necesario
+    // URL de tu backend - Usamos la de Railway por defecto
+    private String API_URL = "https://saas-carcare-production.up.railway.app"; 
 
     @Override
     public void onCreate() {
@@ -69,7 +69,13 @@ public class TrackingService extends Service {
                 .setSmallIcon(android.R.drawable.ic_menu_mylocation)
                 .build();
 
-        startForeground(1, notification);
+        // En Android 10 (API 29) y posteriores, es obligatorio especificar el tipo de servicio
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+        } else {
+            startForeground(1, notification);
+        }
+        
         solicitarActualizacionesUbicacion();
         
         return START_NOT_STICKY;

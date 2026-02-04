@@ -11,11 +11,18 @@ import android.content.Intent;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.widget.Toast;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceError;
+import android.webkit.SslErrorHandler;
+import android.net.http.SslError;
+import android.graphics.Bitmap;
 
 public class MainActivity extends Activity {
 
     private WebView mWebView;
-    private static final String API_URL = "https://saas-carcare-production.up.railway.app"; // URL de producción
+    private static final String API_URL = "https://saas-carcare-production.up.railway.app"; 
+    // Por defecto usamos localhost para pruebas, cámbiala si tienes el frontend en Railway
+    private static final String WEB_URL = "http://10.0.2.2:3000"; 
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
@@ -28,20 +35,56 @@ public class MainActivity extends Activity {
         WebSettings webSettings = mWebView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setDomStorageEnabled(true);
+        webSettings.setDatabaseEnabled(true);
+        webSettings.setAllowFileAccess(true);
+        webSettings.setAllowContentAccess(true);
+        webSettings.setLoadWithOverviewMode(true);
+        webSettings.setUseWideViewPort(true);
+        
+        // Habilitar depuración de WebView
+        WebView.setWebContentsDebuggingEnabled(true);
 
-        webSettings.setRenderPriority(WebSettings.RenderPriority.HIGH);
-        webSettings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-
-        // Pedir permisos de ubicación si no los tiene
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+        // Pedir permisos de ubicación y notificaciones (Android 13+)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS}, 1);
+            }
+        } else {
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+            }
         }
 
         mWebView.addJavascriptInterface(new WebAppInterface(this), "AndroidTracker");
-        mWebView.setWebViewClient(new WebViewClient());
+        
+        mWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                android.util.Log.d("EcoFleet", "Cargando URL: " + url);
+            }
 
-        // Apuntar al nuevo panel de conductor
-        mWebView.loadUrl("http://10.0.2.2:3000/conductor"); 
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                android.util.Log.d("EcoFleet", "Carga finalizada: " + url);
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                android.util.Log.e("EcoFleet", "Error de WebView: " + error.getDescription());
+            }
+
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                android.util.Log.w("EcoFleet", "Error SSL detectado: " + error.getPrimaryError());
+                handler.proceed(); // Ignorar errores SSL para pruebas
+            }
+        });
+
+        // Cargamos la URL del panel de conductor
+        mWebView.loadUrl(WEB_URL + "/conductor"); 
     }
 
     public class WebAppInterface {
@@ -56,7 +99,14 @@ public class MainActivity extends Activity {
             Intent intent = new Intent(mContext, TrackingService.class);
             intent.putExtra("rutaId", rutaId);
             intent.putExtra("apiUrl", API_URL);
-            mContext.startForegroundService(intent);
+            
+            // Solución para compatibilidad con API < 26
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                mContext.startForegroundService(intent);
+            } else {
+                mContext.startService(intent);
+            }
+            
             mContext.runOnUiThread(() -> Toast.makeText(mContext, "Iniciando GPS Nativo...", Toast.LENGTH_SHORT).show());
         }
 

@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:2:1-38:12
-INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:2:1-38:12
-INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:2:1-38:12
-INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:2:1-38:12
+ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:2:1-39:12
+INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:2:1-39:12
+INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:2:1-39:12
+INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:2:1-39:12
 MERGED from [com.google.android.material:material:1.11.0] C:\Users\volit\.gradle\caches\9.0-milestone-1\transforms\5a1d71a04bdc553bf688ba17ca70df95\transformed\material-1.11.0\AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\volit\.gradle\caches\9.0-milestone-1\transforms\2bd21c387f905f9fbde1003770ad8dc1\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] C:\Users\volit\.gradle\caches\9.0-milestone-1\transforms\796766d5b8fec50d0d9e6063daebb2fd\transformed\constraintlayout-2.0.1\AndroidManifest.xml:2:1-11:12
@@ -82,9 +82,13 @@ uses-permission#android.permission.FOREGROUND_SERVICE_LOCATION
 ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:10:5-86
 	android:name
 		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:10:22-83
+uses-permission#android.permission.POST_NOTIFICATIONS
+ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:11:5-77
+	android:name
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:11:22-74
 application
-ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:13:5-36:19
-INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:13:5-36:19
+ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:14:5-37:19
+INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:14:5-37:19
 MERGED from [com.google.android.material:material:1.11.0] C:\Users\volit\.gradle\caches\9.0-milestone-1\transforms\5a1d71a04bdc553bf688ba17ca70df95\transformed\material-1.11.0\AndroidManifest.xml:22:5-20
 MERGED from [com.google.android.material:material:1.11.0] C:\Users\volit\.gradle\caches\9.0-milestone-1\transforms\5a1d71a04bdc553bf688ba17ca70df95\transformed\material-1.11.0\AndroidManifest.xml:22:5-20
 MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] C:\Users\volit\.gradle\caches\9.0-milestone-1\transforms\796766d5b8fec50d0d9e6063daebb2fd\transformed\constraintlayout-2.0.1\AndroidManifest.xml:9:5-20
@@ -114,45 +118,45 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\volit\.gradle\cach
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.9.0] C:\Users\volit\.gradle\caches\9.0-milestone-1\transforms\4428070d35b5908e2590b1f7977b0c86\transformed\core-1.9.0\AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:18:9-35
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:19:9-35
 	android:label
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:16:9-33
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:17:9-33
 	android:roundIcon
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:17:9-54
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:18:9-54
 	android:icon
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:15:9-43
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:16:9-43
 	android:allowBackup
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:14:9-35
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:15:9-35
 	android:theme
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:19:9-56
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:20:9-56
 	android:usesCleartextTraffic
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:20:9-44
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:21:9-44
 activity#com.carcare.app.MainActivity
-ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:22:9-29:20
+ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:23:9-30:20
 	android:exported
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:24:13-36
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:25:13-36
 	android:name
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:23:13-56
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:24:13-56
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:25:13-28:29
+ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:26:13-29:29
 action#android.intent.action.MAIN
-ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:26:17-69
+ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:27:17-69
 	android:name
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:26:25-66
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:27:25-66
 category#android.intent.category.LAUNCHER
-ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:27:17-77
+ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:28:17-77
 	android:name
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:27:27-74
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:28:27-74
 service#com.carcare.app.TrackingService
-ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:31:9-35:56
+ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:32:9-36:56
 	android:enabled
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:33:13-35
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:34:13-35
 	android:exported
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:34:13-37
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:35:13-37
 	android:foregroundServiceType
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:35:13-53
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:36:13-53
 	android:name
-		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:32:13-59
+		ADDED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml:33:13-59
 uses-sdk
 INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from C:\Users\volit\Documents\SaaS-CarCare\gestion-flota\android\app\src\main\AndroidManifest.xml

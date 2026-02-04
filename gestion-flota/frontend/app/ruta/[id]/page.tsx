@@ -31,7 +31,7 @@ interface Ruta {
     desviado: boolean;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://saas-carcare-production.up.railway.app";
 
 export default function RutaTracking() {
     const router = useRouter();
