@@ -28,4 +28,47 @@ public class Ruta {
     private Double longitudActual;
     
     private Boolean desviado = false;
+
+    // Getters y Setters manuales para asegurar compatibilidad
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+    
+    public String getOrigen() { return origen; }
+    public void setOrigen(String origen) { this.origen = origen; }
+    
+    public String getDestino() { return destino; }
+    public void setDestino(String destino) { this.destino = destino; }
+    
+    public Double getDistanciaEstimadaKm() { return distanciaEstimadaKm; }
+    public void setDistanciaEstimadaKm(Double distanciaEstimadaKm) { this.distanciaEstimadaKm = distanciaEstimadaKm; }
+    
+    public String getEstado() { return estado; }
+    public void setEstado(String estado) { this.estado = estado; }
+    
+    public String getVehiculoId() { return vehiculoId; }
+    public void setVehiculoId(String vehiculoId) { this.vehiculoId = vehiculoId; }
+    
+    public String getFecha() { return fecha; }
+    public void setFecha(String fecha) { this.fecha = fecha; }
+    
+    public Double getLatitudOrigen() { return latitudOrigen; }
+    public void setLatitudOrigen(Double latitudOrigen) { this.latitudOrigen = latitudOrigen; }
+    
+    public Double getLongitudOrigen() { return longitudOrigen; }
+    public void setLongitudOrigen(Double longitudOrigen) { this.longitudOrigen = longitudOrigen; }
+    
+    public Double getLatitudDestino() { return latitudDestino; }
+    public void setLatitudDestino(Double latitudDestino) { this.latitudDestino = latitudDestino; }
+    
+    public Double getLongitudDestino() { return longitudDestino; }
+    public void setLongitudDestino(Double longitudDestino) { this.longitudDestino = longitudDestino; }
+    
+    public Double getLatitudActual() { return latitudActual; }
+    public void setLatitudActual(Double latitudActual) { this.latitudActual = latitudActual; }
+    
+    public Double getLongitudActual() { return longitudActual; }
+    public void setLongitudActual(Double longitudActual) { this.longitudActual = longitudActual; }
+    
+    public Boolean getDesviado() { return desviado; }
+    public void setDesviado(Boolean desviado) { this.desviado = desviado; }
 }

@@ -16,24 +16,65 @@ interface Ruta {
     fecha: string;
 }
 
-// Forzamos la URL de producción como fallback principal para evitar fallos en el móvil
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://saas-carcare-production.up.railway.app";
+// En desarrollo (móvil), usamos rutas relativas que Next.js redirigirá al backend de Railway
+// En producción, usamos la URL directa del backend
+const API_URL = typeof window !== 'undefined' && window.location.hostname === '10.0.2.2'
+    ? '' // Ruta relativa para que Next.js haga de proxy
+    : (process.env.NEXT_PUBLIC_API_URL || "https://saas-carcare-production.up.railway.app");
 
 export default function ConductorDashboard() {
     const [rutas, setRutas] = useState<Ruta[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     const cargarRutas = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/rutas`);
+            setError(null);
+            console.log('[ConductorDashboard] Iniciando carga de rutas desde:', API_URL);
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                console.log('[ConductorDashboard] Timeout alcanzado después de 8 segundos');
+                controller.abort();
+            }, 8000);
+
+            const url = `${API_URL}/api/rutas`;
+            console.log('[ConductorDashboard] Haciendo fetch a:', url);
+
+            const res = await fetch(url, {
+                signal: controller.signal,
+                mode: 'cors',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            clearTimeout(timeoutId);
+
+            console.log('[ConductorDashboard] Respuesta recibida:', {
+                status: res.status,
+                ok: res.ok,
+                statusText: res.statusText
+            });
+
             if (res.ok) {
                 const data = await res.json();
-                // Filter only routes that are planned or in progress
+                console.log('[ConductorDashboard] Datos recibidos:', data.length, 'rutas');
                 setRutas(data.filter((r: Ruta) => r.estado !== 'COMPLETADA'));
+                setLoading(false);
+            } else {
+                throw new Error(`Error del servidor: ${res.status} ${res.statusText}`);
             }
         } catch (err: any) {
-            console.error("Error cargando rutas:", err);
-            toast.error("Error de conexión con el servidor");
+            console.error('[ConductorDashboard] Error cargando rutas:', {
+                name: err.name,
+                message: err.message,
+                stack: err.stack
+            });
+            const errorMsg = err.name === 'AbortError'
+                ? "Tiempo de espera agotado - El servidor no responde"
+                : `Error de conexión: ${err.message}`;
+            setError(errorMsg);
+            toast.error(errorMsg);
         } finally {
             setLoading(false);
         }
@@ -42,8 +83,110 @@ export default function ConductorDashboard() {
     useEffect(() => {
         cargarRutas();
         const interval = setInterval(cargarRutas, 10000);
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            stopBrowserGPS();
+        };
     }, []);
+
+    // GPS Fallback para navegador
+    const [gpsInterval, setGpsInterval] = useState<NodeJS.Timeout | null>(null);
+
+    const startBrowserGPS = (rutaId: string) => {
+        if (!navigator.geolocation) {
+            toast.error("GPS no disponible en este navegador");
+            return;
+        }
+
+        gpsInterval && clearInterval(gpsInterval);
+
+        // Primero solicitar permiso y obtener posición inicial
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                toast.success(`GPS encontrado: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
+                
+                // Actualizar posición inicial inmediatamente
+                try {
+                    await fetch(`${API_URL}/api/rutas/${rutaId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            latitudActual: position.coords.latitude,
+                            longitudActual: position.coords.longitude
+                        })
+                    });
+                } catch (err) {
+                    console.error("Error updating initial GPS:", err);
+                }
+
+                // Luego usar watchPosition para actualizaciones continuas
+                const watchId = navigator.geolocation.watchPosition(
+                    async (position) => {
+                        console.log(`GPS Update: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
+                        try {
+                            await fetch(`${API_URL}/api/rutas/${rutaId}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    latitudActual: position.coords.latitude,
+                                    longitudActual: position.coords.longitude
+                                })
+                            });
+                        } catch (err) {
+                            console.error("Error updating GPS:", err);
+                        }
+                    },
+                    (error) => {
+                        console.error("GPS Watch Error:", error);
+                        if (error.code === error.PERMISSION_DENIED) {
+                            toast.error("Permiso de GPS denegado. Activa el GPS y recarga la página.");
+                        } else if (error.code === error.POSITION_UNAVAILABLE) {
+                            toast.error("GPS no disponible. Revisa tu conexión GPS.");
+                        } else {
+                            toast.error(`Error GPS: ${error.message}`);
+                        }
+                    },
+                    { 
+                        enableHighAccuracy: true, 
+                        timeout: 15000, 
+                        maximumAge: 0,
+                        desiredAccuracy: 10 
+                    }
+                );
+
+                // Guardar el watchId para poder limpiarlo después
+                const interval = setInterval(() => {}, 1000);
+                (interval as any).watchId = watchId;
+                setGpsInterval(interval);
+            },
+            (error) => {
+                console.error("GPS Initial Error:", error);
+                if (error.code === error.PERMISSION_DENIED) {
+                    toast.error("🚫 Permiso de GPS denegado. Activa el GPS en tu navegador y recarga.");
+                } else if (error.code === error.POSITION_UNAVAILABLE) {
+                    toast.error("📡 GPS no disponible. Revisa tu conexión.");
+                } else {
+                    toast.error(`❌ Error GPS: ${error.message}`);
+                }
+            },
+            { 
+                enableHighAccuracy: true, 
+                timeout: 20000, 
+                maximumAge: 60000 
+            }
+        );
+    };
+
+    const stopBrowserGPS = () => {
+        if (gpsInterval) {
+            // Limpiar el watchPosition si existe
+            if ((gpsInterval as any).watchId) {
+                navigator.geolocation.clearWatch((gpsInterval as any).watchId);
+            }
+            clearInterval(gpsInterval);
+            setGpsInterval(null);
+        }
+    };
 
     const toggleRuta = async (ruta: Ruta) => {
         const nuevoEstado = ruta.estado === 'EN_CURSO' ? 'PLANIFICADA' : 'EN_CURSO';
@@ -54,6 +197,13 @@ export default function ConductorDashboard() {
                 (window as any).AndroidTracker.startTracking(ruta.id);
             } else {
                 (window as any).AndroidTracker.stopTracking();
+            }
+        } else {
+            // Fallback GPS para navegador web
+            if (nuevoEstado === 'EN_CURSO') {
+                startBrowserGPS(ruta.id);
+            } else {
+                stopBrowserGPS();
             }
         }
 
@@ -70,7 +220,63 @@ export default function ConductorDashboard() {
         }
     };
 
-    if (loading) return <BackgroundMeteors><div>Cargando Panel Conductor...</div></BackgroundMeteors>;
+    if (loading && !error) return (
+        <BackgroundMeteors>
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '100vh',
+                padding: '2rem',
+                textAlign: 'center'
+            }}>
+                <div style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Cargando Panel Conductor...</div>
+                <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>Conectando a {API_URL}</div>
+            </div>
+        </BackgroundMeteors>
+    );
+
+    if (error) return (
+        <BackgroundMeteors>
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '100vh',
+                padding: '2rem',
+                textAlign: 'center'
+            }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
+                <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem', color: '#ef4444' }}>Error de Conexión</div>
+                <div style={{ fontSize: '0.9rem', color: '#9ca3af', marginBottom: '1rem' }}>{error}</div>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '2rem', fontFamily: 'monospace' }}>
+                    Intentando conectar a:<br />
+                    {API_URL}/api/rutas
+                </div>
+                <button
+                    onClick={() => {
+                        setLoading(true);
+                        setError(null);
+                        cargarRutas();
+                    }}
+                    style={{
+                        padding: '1rem 2rem',
+                        background: 'var(--accent)',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                    }}
+                >
+                    🔄 Reintentar Conexión
+                </button>
+            </div>
+        </BackgroundMeteors>
+    );
 
     const rutaActiva = rutas.find(r => r.estado === 'EN_CURSO');
     const rutasPendientes = rutas.filter(r => r.estado === 'PLANIFICADA');

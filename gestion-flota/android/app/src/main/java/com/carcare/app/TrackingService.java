@@ -82,13 +82,15 @@ public class TrackingService extends Service {
     }
 
     private void solicitarActualizacionesUbicacion() {
-        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
+        // Actualización cada 2 segundos para tracking en tiempo real
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000)
                 .setWaitForAccurateLocation(false)
-                .setMinUpdateIntervalMillis(3000)
-                .setMaxUpdateDelayMillis(10000)
+                .setMinUpdateIntervalMillis(1000) // Mínimo 1 segundo entre actualizaciones
+                .setMaxUpdateDelayMillis(3000)
                 .build();
 
         try {
+            Log.d(TAG, "Iniciando solicitud de actualizaciones de ubicación para ruta: " + rutaId);
             fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
         } catch (SecurityException e) {
             Log.e(TAG, "Error: Sin permisos de ubicación", e);
@@ -96,6 +98,9 @@ public class TrackingService extends Service {
     }
 
     private void enviarUbicacionAlBackend(Location location) {
+        Log.d(TAG, String.format("Nueva ubicación GPS: lat=%.6f, lng=%.6f, precisión=%.1fm", 
+            location.getLatitude(), location.getLongitude(), location.getAccuracy()));
+        
         new Thread(() -> {
             try {
                 URL url = new URL(API_URL + "/api/rutas/" + rutaId);
@@ -103,11 +108,15 @@ public class TrackingService extends Service {
                 conn.setRequestMethod("PUT");
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setDoOutput(true);
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
 
                 String jsonInputString = String.format(
                     "{\"latitudActual\": %f, \"longitudActual\": %f, \"estado\": \"EN_CURSO\"}",
                     location.getLatitude(), location.getLongitude()
                 );
+
+                Log.d(TAG, "Enviando ubicación al backend: " + API_URL + "/api/rutas/" + rutaId);
 
                 try (OutputStream os = conn.getOutputStream()) {
                     byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
@@ -115,10 +124,14 @@ public class TrackingService extends Service {
                 }
 
                 int responseCode = conn.getResponseCode();
-                Log.d(TAG, "Ubicación enviada: " + responseCode);
+                if (responseCode == 200) {
+                    Log.d(TAG, "✓ Ubicación enviada correctamente al backend");
+                } else {
+                    Log.w(TAG, "⚠ Respuesta del servidor: " + responseCode);
+                }
                 conn.disconnect();
             } catch (Exception e) {
-                Log.e(TAG, "Error enviando ubicación", e);
+                Log.e(TAG, "✗ Error enviando ubicación al backend: " + e.getMessage(), e);
             }
         }).start();
     }

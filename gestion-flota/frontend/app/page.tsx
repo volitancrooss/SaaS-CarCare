@@ -57,25 +57,21 @@ export default function Dashboard() {
   const datosGrafico = useMemo(() => {
     const nombresMeses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-    const datosManuales: Record<string, number> = {
-      "Ene": 50,
-      "Feb": 60,
-      "Mar": 50,
-      "Abr": 200,
-      "May": 100,
-      "Jun": 150,
-      "Jul": 200,
-      "Ago": 250,
-      "Sep": 300,
-      "Oct": 500,
-      "Nov": 250,
-      "Dic": 0,
-    };
-
     const consumoRealPorMes = new Array(12).fill(0);
 
-    nombresMeses.forEach((mes, index) => {
-      if (datosManuales[mes]) consumoRealPorMes[index] += datosManuales[mes];
+    // DATOS DE PRUEBA TEMPORALES (eliminar cuando tengas rutas reales)
+    const datosPrueba = [
+      { mes: 0, distancia: 550 }, // Enero: 250km = 20L
+      { mes: 1, distancia: 180 }, // Febrero: 180km = 14.4L  
+      { mes: 2, distancia: 320 }, // Marzo: 320km = 25.6L
+      { mes: 3, distancia: 150 }, // Abril: 150km = 12L
+      { mes: 4, distancia: 980 }, // Mayo: 280km = 22.4L
+      { mes: 5, distancia: 200 }, // Junio: 200km = 16L
+    ];
+
+    datosPrueba.forEach(dato => {
+      const consumoEstimado = (dato.distancia / 100) * 8;
+      consumoRealPorMes[dato.mes] += consumoEstimado;
     });
 
     rutas.forEach(r => {
@@ -573,7 +569,17 @@ export default function Dashboard() {
               </div>
 
               <div>
-                <h3 style={{ marginBottom: '1rem' }}>Rutas Activas</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3>Rutas Activas</h3>
+                  <button
+                    onClick={cargarDatos}
+                    className={styles.submitButton}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                    title="Recargar rutas"
+                  >
+                    🔄 Recargar
+                  </button>
+                </div>
                 <div className={styles.grid}>
                   {rutas.map(r => {
                     const esEnCurso = r.estado === 'EN_CURSO';
@@ -584,99 +590,54 @@ export default function Dashboard() {
                         key={r.id}
                         className={styles.card}
                         onClick={() => router.push(`/ruta/${r.id}`)}
-                        style={{
-                          borderLeft: `6px solid ${esCompletada ? '#22c55e' : (esEnCurso ? 'var(--accent)' : '#4b5563')}`,
-                          background: 'linear-gradient(145deg, rgba(30,30,40,0.95), rgba(20,20,25,0.9))',
-                          cursor: 'pointer',
-                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          position: 'relative',
-                          overflow: 'hidden'
-                        }}
+                        style={{ cursor: 'pointer' }}
                       >
-                        <div className={styles.cardHeader} style={{ marginBottom: '1.2rem' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
-                              <span style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: '700', fontFamily: 'monospace' }}>#{r.id?.slice(-6).toUpperCase()}</span>
-                              <span style={{ color: '#333' }}>•</span>
-                              <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{r.fecha}</span>
-                            </div>
-                            <h4 className={styles.cardTitle} style={{
-                              fontSize: '1rem',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.6rem',
-                              width: '100%',
-                              overflow: 'hidden'
-                            }}>
-                              <span style={{
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                maxWidth: '140px'
-                              }} title={r.origen}>{r.origen}</span>
-                              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ opacity: 0.3, flexShrink: 0 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                              <span style={{
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                maxWidth: '140px'
-                              }} title={r.destino}>{r.destino}</span>
-                            </h4>
+                        <div className={styles.cardHeader}>
+                          <div>
+                            <h2 className={styles.cardTitle}>{r.origen} → {r.destino}</h2>
+                            <span className={styles.cardSubtitle}>#{r.id?.slice(-6).toUpperCase()} • {r.fecha}</span>
                           </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEliminarRuta(r);
+                            }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1.2rem' }}
+                            title="Eliminar Ruta"
+                          >
+                            X
+                          </button>
+                        </div>
 
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem', flexShrink: 0 }}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEliminarRuta(r);
-                              }}
-                              style={{
-                                background: 'rgba(239, 68, 68, 0.1)',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: "#ef4444",
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '8px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.2s'
-                              }}
-                              title="Eliminar Ruta"
-                            >
-                              ✕
-                            </button>
+                        <div className={styles.statRow}>
+                          <span className={styles.statLabel}>Distancia total</span>
+                          <span className={styles.statValue}>{r.distanciaEstimadaKm} km</span>
+                        </div>
 
-                            <select
-                              value={r.estado}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                handleCambioEstadoRuta(r, e.target.value);
-                              }}
-                              className={styles.badge}
-                              style={{
-                                background: esCompletada ? 'rgba(34, 197, 94, 0.1)' : (esEnCurso ? 'rgba(6, 182, 212, 0.1)' : 'rgba(255,255,255,0.05)'),
-                                color: esCompletada ? '#4ade80' : (esEnCurso ? '#22d3ee' : '#9ca3af'),
-                                border: `1px solid ${esCompletada ? 'rgba(34, 197, 94, 0.2)' : (esEnCurso ? 'rgba(6, 182, 212, 0.2)' : 'rgba(255,255,255,0.1)')}`,
-                                cursor: 'pointer',
-                                padding: '0.3rem 0.6rem',
-                                borderRadius: '20px',
-                                fontWeight: '800',
-                                fontSize: '0.65rem',
-                                outline: 'none'
-                              }}
-                            >
-                              <option value="PLANIFICADA" style={{ color: 'black' }}>PLANIFICADA</option>
-                              <option value="EN_CURSO" style={{ color: 'black' }}>EN CURSO</option>
-                              <option value="COMPLETADA" style={{ color: 'black' }}>COMPLETADA</option>
-                            </select>
-                          </div>
+                        <div className={styles.statRow}>
+                          <span className={styles.statLabel}>Vehículo asignado</span>
+                          <span className={styles.statValue}>
+                            {r.vehiculoId?.length > 10 ? `...${r.vehiculoId.slice(-8)}` : r.vehiculoId}
+                          </span>
+                        </div>
+
+                        <div className={styles.statRow}>
+                          <span className={styles.statLabel}>Estado</span>
+                          <span className={styles.statValue}>{r.estado}</span>
+                        </div>
+
+                        <div className={styles.fuelBarBg}>
+                          <div
+                            className={styles.fuelBarFill}
+                            style={{
+                              width: esCompletada ? '100%' : (esEnCurso ? '60%' : '30%'),
+                              backgroundColor: esCompletada ? '#22c55e' : (esEnCurso ? '#06b6d4' : '#6b7280')
+                            }}
+                          />
                         </div>
 
                         {esEnCurso && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.2rem', background: 'rgba(34, 197, 94, 0.05)', padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.1)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '0.5rem' }}>
                             <span style={{
                               width: '8px',
                               height: '8px',
@@ -689,34 +650,22 @@ export default function Dashboard() {
                           </div>
                         )}
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.8rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                          <div>
-                            <span style={{ display: 'block', fontSize: '0.6rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.2rem' }}>Distancia</span>
-                            <span style={{ fontSize: '1rem', fontWeight: '800', color: '#fff' }}>{r.distanciaEstimadaKm} <span style={{ fontSize: '0.7rem', color: '#4b5563' }}>KM</span></span>
-                          </div>
-                          <div style={{ textAlign: 'right', maxWidth: '120px' }}>
-                            <span style={{ display: 'block', fontSize: '0.6rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.2rem' }}>Vehículo</span>
-                            <span style={{
-                              fontSize: '0.85rem',
-                              fontWeight: '700',
-                              color: 'var(--accent)',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              display: 'block'
-                            }}>
-                              {r.vehiculoId?.length > 10 ? `...${r.vehiculoId.slice(-8)}` : r.vehiculoId}
-                            </span>
-                          </div>
+                        <div style={{ marginTop: '1rem' }}>
+                          <span
+                            className={styles.badge}
+                            style={{
+                              backgroundColor: esCompletada ? 'rgba(34, 197, 94, 0.2)' : (esEnCurso ? 'rgba(6, 182, 212, 0.2)' : 'rgba(107, 114, 128, 0.2)'),
+                              color: esCompletada ? '#4ade80' : (esEnCurso ? '#22d3ee' : '#9ca3af'),
+                              boxShadow: esCompletada ? '0 0 10px rgba(34, 197, 94, 0.2)' : (esEnCurso ? '0 0 10px rgba(6, 182, 212, 0.2)' : 'none'),
+                            }}
+                          >
+                            {esCompletada ? "COMPLETADA" : (esEnCurso ? "EN CURSO" : "PLANIFICADA")}
+                          </span>
                         </div>
                       </div>
                     );
                   })}
-                  {rutas.length === 0 && (
-                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', background: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '2px dashed rgba(255,255,255,0.05)' }}>
-                      <p style={{ color: 'var(--secondary)' }}>No hay rutas planificadas.</p>
-                    </div>
-                  )}
+                  {rutas.length === 0 && <p>No hay rutas planificadas.</p>}
                 </div>
               </div>
             </div>

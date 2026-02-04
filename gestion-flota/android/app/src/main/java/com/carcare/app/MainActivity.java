@@ -41,6 +41,11 @@ public class MainActivity extends Activity {
         webSettings.setLoadWithOverviewMode(true);
         webSettings.setUseWideViewPort(true);
         
+        // Permitir contenido mixto (HTTP -> HTTPS) para desarrollo
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
+        
         // Habilitar depuración de WebView
         WebView.setWebContentsDebuggingEnabled(true);
 

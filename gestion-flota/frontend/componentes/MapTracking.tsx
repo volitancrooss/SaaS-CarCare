@@ -33,13 +33,41 @@ interface MapTrackingProps {
     destination: [number, number];
     current: [number, number];
     isDeviated?: boolean;
+    routeCoordinates?: [number, number][]; // Ruta calculada dinámicamente
 }
 
-export default function MapTracking({ origin, destination, current, isDeviated }: MapTrackingProps) {
+export default function MapTracking({ origin, destination, current, isDeviated, routeCoordinates }: MapTrackingProps) {
+    console.log('[MapTracking] 🚨 COORDENADAS RECIBIDAS:');
+    console.log('- Origin:', origin);
+    console.log('- Destination:', destination);  
+    console.log('- Current (GPS):', current);
+    console.log('- Is Deviated:', isDeviated);
+    console.log('- Route Coordinates length:', routeCoordinates?.length);
+
+    // SIMPLIFICADO: Usar coordenadas directamente sin validaciones complejas
+    const useCurrent = current && current[0] !== 0 && current[1] !== 0;
+    const carPosition = useCurrent ? current : origin;
+
+    console.log('[MapTracking] 🚗 POSICIÓN DEL COCHE USADA:', carPosition);
+    console.log('[MapTracking] 📡 ¿Usando GPS real?:', useCurrent);
+
+    // Calcular bounds para mostrar todo: origen, destino y posición actual
+    const allPoints = [origin, destination, carPosition];
+    const bounds: [[number, number], [number, number]] = [
+        [
+            Math.min(...allPoints.map(p => p[0])),
+            Math.min(...allPoints.map(p => p[1]))
+        ],
+        [
+            Math.max(...allPoints.map(p => p[0])),
+            Math.max(...allPoints.map(p => p[1]))
+        ]
+    ];
+
     return (
         <MapContainer
-            center={current}
-            zoom={13}
+            bounds={bounds}
+            boundsOptions={{ padding: [50, 50] }}
             style={{ height: "100%", width: "100%", borderRadius: "12px", border: "2px solid rgba(255,255,255,0.1)" }}
             attributionControl={false}
         >
@@ -50,31 +78,69 @@ export default function MapTracking({ origin, destination, current, isDeviated }
 
             {/* Starting point */}
             <Marker position={origin}>
-                <Popup>Origen</Popup>
+                <Popup>
+                    <div style={{ color: '#000', fontWeight: 'bold' }}>
+                        📍 Origen<br />
+                        <span style={{ fontSize: '0.8em', color: '#666' }}>
+                            {origin[0].toFixed(4)}, {origin[1].toFixed(4)}
+                        </span>
+                    </div>
+                </Popup>
             </Marker>
 
             {/* Destination point */}
             <Marker position={destination}>
-                <Popup>Destino</Popup>
-            </Marker>
-
-            {/* Current location (The car) */}
-            <Marker position={current} icon={CarIcon}>
                 <Popup>
-                    {isDeviated ? "⚠️ ¡DESVIADO DEL CAMINO!" : "Vehículo en ruta"}
+                    <div style={{ color: '#000', fontWeight: 'bold' }}>
+                        🏁 Destino<br />
+                        <span style={{ fontSize: '0.8em', color: '#666' }}>
+                            {destination[0].toFixed(4)}, {destination[1].toFixed(4)}
+                        </span>
+                    </div>
                 </Popup>
             </Marker>
 
-            {/* Route Line */}
-            <Polyline
-                positions={[origin, destination]}
-                color={isDeviated ? "#ef4444" : "#3bf63b"}
-                weight={5}
-                opacity={0.6}
-                dashArray={isDeviated ? "10, 10" : ""}
-            />
+            {/* Current location (The car) - POSICIÓN REAL DEL DISPOSITIVO */}
+            <Marker position={carPosition} icon={CarIcon}>
+                <Popup>
+                    <div style={{ color: '#000', fontWeight: 'bold' }}>
+                        {isDeviated ? "⚠️ ¡DESVIADO DEL CAMINO!" : 
+                         useCurrent ? "🚗 POSICIÓN REAL DEL DISPOSITIVO" : 
+                         "📍 POSICIÓN ORIGEN (sin GPS)"}<br />
+                        <span style={{ fontSize: '0.8em', color: '#666' }}>
+                            {carPosition[0].toFixed(4)}, {carPosition[1].toFixed(4)}
+                            <div style={{ 
+                                color: useCurrent ? '#22c55e' : '#f59e0b', 
+                                fontWeight: 'bold', 
+                                marginTop: '4px' 
+                            }}>
+                                {useCurrent ? '✅ GPS REAL RECIBIDO' : '⏳ ESPERANDO GPS'}
+                            </div>
+                        </span>
+                    </div>
+                </Popup>
+            </Marker>
 
-            <RecenterMap lat={current[0]} lng={current[1]} />
+            {/* Ruta dinámica calculada por calles */}
+            {routeCoordinates && routeCoordinates.length > 0 ? (
+                <Polyline
+                    positions={routeCoordinates}
+                    color={isDeviated ? "#ef4444" : "#3bf63b"}
+                    weight={4}
+                    opacity={0.8}
+                />
+            ) : (
+                // Fallback: LÍNEA DIRECTA DESDE POSICIÓN REAL DEL DISPOSITIVO hasta destino
+                <Polyline
+                    positions={[carPosition, destination]}
+                    color={isDeviated ? "#ef4444" : "#3bf63b"}
+                    weight={4}
+                    opacity={0.4}
+                    dashArray="10, 10"
+                />
+            )}
+
+            <RecenterMap lat={carPosition[0]} lng={carPosition[1]} />
         </MapContainer>
     );
 }

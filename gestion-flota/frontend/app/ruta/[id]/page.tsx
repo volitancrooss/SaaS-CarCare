@@ -31,7 +31,9 @@ interface Ruta {
     desviado: boolean;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://saas-carcare-production.up.railway.app";
+const API_URL = typeof window !== 'undefined' && window.location.hostname === '10.0.2.2'
+    ? ''
+    : (process.env.NEXT_PUBLIC_API_URL || "https://saas-carcare-production.up.railway.app");
 
 export default function RutaTracking() {
     const router = useRouter();
@@ -40,65 +42,277 @@ export default function RutaTracking() {
 
     const [ruta, setRuta] = useState<Ruta | null>(null);
     const [loading, setLoading] = useState(true);
+    const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+    const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
 
     // Default coords if none exist (Madrid area as placeholder)
     const defaultOrigin: [number, number] = [40.4168, -3.7038];
     const defaultDest: [number, number] = [41.3851, 2.1734];
 
-    const cargarDatos = async () => {
+    const calcularRutaDinamica = async (currentLat: number, currentLng: number, destLat: number, destLng: number) => {
         try {
-            const res = await fetch(`${API_URL}/api/rutas/${id}`);
-            if (res.ok) {
-                const data = await res.json();
-                if (!data.latitudOrigen) {
-                    toast.error("Esta ruta no tiene coordenadas válidas. Intenta crear una nueva.");
+            setIsCalculatingRoute(true);
+            console.log('[RutaTracking] Calculando ruta dinámica desde:', { currentLat, currentLng }, 'hasta:', { destLat, destLng });
+
+            // Usar OpenRouteService API (gratuita, sin API key para uso básico)
+            const url = `https://router.project-osrm.org/route/v1/driving/${currentLng},${currentLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                const coordinates = data.routes[0].geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
+                console.log('[RutaTracking] Ruta calculada con', coordinates.length, 'puntos');
+                setRouteCoordinates(coordinates);
+
+                // Calcular distancia y tiempo estimado
+                const distance = (data.routes[0].distance / 1000).toFixed(1); // km
+                const duration = Math.round(data.routes[0].duration / 60); // minutos
+                console.log(`[RutaTracking] Distancia: ${distance} km, Tiempo estimado: ${duration} min`);
+            } else {
+                console.warn('[RutaTracking] No se pudo calcular la ruta, usando línea directa');
+                // Fallback: línea directa
+                setRouteCoordinates([[currentLat, currentLng], [destLat, destLng]]);
+            }
+        } catch (error) {
+            console.error('[RutaTracking] Error calculando ruta:', error);
+            // Fallback: línea directa
+            setRouteCoordinates([[currentLat, currentLng], [destLat, destLng]]);
+        } finally {
+            setIsCalculatingRoute(false);
+        }
+    };
+
+    // Función accesible para recargar datos desde fuera del useEffect
+    let globalRequest: AbortController | null = null;
+    let isMounted = true;
+    let simulationInterval: NodeJS.Timeout | null = null;
+
+    const recargarDatos = async () => {
+        if (!isMounted) return;
+        
+        // Cancelar request anterior si existe
+        if (globalRequest) {
+            globalRequest.abort();
+        }
+        
+        globalRequest = new AbortController();
+        
+        try {
+            const res = await fetch(`${API_URL}/api/rutas/${id}`, {
+                signal: globalRequest.signal
+            });
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+
+            const data = await res.json();
+
+            console.log('[RutaTracking] 🚨 DATOS COMPLETOS RECIBIDOS:');
+            console.log('- Estado:', data.estado);
+            console.log('- Tiene GPS:', !!(data.latitudActual && data.longitudActual));
+            console.log('- GPS Origen:', data.latitudOrigen, data.longitudOrigen);
+            console.log('- GPS Destino:', data.latitudDestino, data.longitudDestino);
+            console.log('- GPS ACTUAL:', data.latitudActual, data.longitudActual);
+            console.log('- GPS Actual formateado:', data.latitudActual && data.longitudActual ? 
+                `${data.latitudActual.toFixed(4)}, ${data.longitudActual.toFixed(4)}` : 'NULL');
+            console.log('- Fecha:', data.fecha);
+            console.log('- ID:', data.id);
+
+            // IMPORTANTE: Calcular ruta desde la posición GPS ACTUAL del conductor
+            if (data.estado === 'EN_CURSO') {
+                if (data.latitudActual && data.longitudActual && data.latitudDestino && data.longitudDestino) {
+                    console.log('[RutaTracking] ✅ GPS REAL detectado - Ubicación:', {
+                        lat: data.latitudActual.toFixed(4),
+                        lng: data.longitudActual.toFixed(4)
+                    });
+                    console.log('[RutaTracking] Calculando ruta desde posición REAL del conductor');
+                    await calcularRutaDinamica(
+                        data.latitudActual,  // Desde donde está AHORA el conductor
+                        data.longitudActual,
+                        data.latitudDestino, // Hasta el destino
+                        data.longitudDestino
+                    );
+                } else {
+                    // Si no hay GPS actual, mostrar sin ruta pero en modo de espera
+                    console.log('[RutaTracking] ⏳ Esperando GPS REAL del emulador/dispositivo...');
+                    setRouteCoordinates([]); // Limpiar ruta anterior
+                    
+                    // Mostrar toast informativo
+                    if (!document.hidden) { // Solo si la pestaña está visible
+                        toast.info("📱 Esperando ubicación GPS del dispositivo Android...", {
+                            duration: 3000,
+                            position: 'top-center'
+                        });
+                    }
                 }
+            } else if (data.estado === 'PLANIFICADA' && data.latitudOrigen && data.longitudOrigen && data.latitudDestino && data.longitudDestino) {
+                // Si la ruta aún no ha iniciado, mostrar desde el origen planificado
+                console.log('[RutaTracking] Ruta planificada - Mostrando ruta desde origen');
+                await calcularRutaDinamica(
+                    data.latitudOrigen,
+                    data.longitudOrigen,
+                    data.latitudDestino,
+                    data.longitudDestino
+                );
+            }
+
+            if (isMounted) {
                 setRuta(data);
             }
-        } catch (err) {
-            console.error("Error cargando ruta:", err);
+        } catch (err: any) {
+            if (err.name !== 'AbortError') {
+                console.error('[RutaTracking] Error cargando ruta:', err);
+                // No mostrar toast para cada error de red para evitar spam
+            }
         } finally {
-            setLoading(false);
+            if (isMounted) {
+                setLoading(false);
+            }
         }
     };
 
     useEffect(() => {
-        cargarDatos();
+        let currentRequest: AbortController | null = null;
+        let previousState: string | undefined;
 
-        // Simular seguimiento en tiempo real
-        const interval = setInterval(() => {
-            setRuta(prev => {
-                if (!prev || prev.estado !== 'EN_CURSO') return prev;
+        const cargarDatosSafe = async () => {
+            if (!isMounted) return;
+            
+            // Cancelar request anterior si existe
+            if (currentRequest) {
+                currentRequest.abort();
+            }
+            
+            currentRequest = new AbortController();
+            
+            try {
+                const res = await fetch(`${API_URL}/api/rutas/${id}`, {
+                    signal: currentRequest.signal
+                });
 
-                // Move car slightly towards destination
-                const step = 0.05;
-                const diffLat = prev.latitudDestino - prev.latitudActual;
-                const diffLng = prev.longitudDestino - prev.longitudActual;
-
-                // Artificial deviation chance
-                const randomDeviation = Math.random() > 0.95;
-                const deviationFactor = randomDeviation ? 0.1 : 0;
-
-                const newLat = prev.latitudActual + (diffLat * step) + (Math.random() - 0.5) * deviationFactor;
-                const newLng = prev.longitudActual + (diffLng * step) + (Math.random() - 0.5) * deviationFactor;
-
-                // Check if arrived
-                if (Math.abs(diffLat) < 0.01 && Math.abs(diffLng) < 0.01) {
-                    toast.success("¡Vehículo ha llegado a su destino!");
-                    return { ...prev, latitudActual: prev.latitudDestino, longitudActual: prev.longitudDestino, estado: 'COMPLETADA' };
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
                 }
 
-                return {
-                    ...prev,
-                    latitudActual: newLat,
-                    longitudActual: newLng,
-                    desviado: randomDeviation || prev.desviado
-                };
-            });
-        }, 3000);
+                const data = await res.json();
+                console.log('[RutaTracking] 🚨 DATOS COMPLETOS RECIBIDOS:');
+                console.log('- Estado:', data.estado);
+                console.log('- Tiene GPS:', !!(data.latitudActual && data.longitudActual));
+                console.log('- GPS Origen:', data.latitudOrigen, data.longitudOrigen);
+                console.log('- GPS Destino:', data.latitudDestino, data.longitudDestino);
+                console.log('- GPS ACTUAL:', data.latitudActual, data.longitudActual);
+                console.log('- GPS Actual formateado:', data.latitudActual && data.longitudActual ? 
+                    `${data.latitudActual.toFixed(4)}, ${data.longitudActual.toFixed(4)}` : 'NULL');
+                console.log('- Fecha:', data.fecha);
+                console.log('- ID:', data.id);
 
-        return () => clearInterval(interval);
-    }, [id]);
+                // IMPORTANTE: Calcular ruta desde la posición GPS ACTUAL del conductor
+                if (data.estado === 'EN_CURSO') {
+                    if (data.latitudActual && data.longitudActual && data.latitudDestino && data.longitudDestino) {
+                        console.log('[RutaTracking] ✅ GPS REAL detectado - Ubicación:', {
+                            lat: data.latitudActual.toFixed(4),
+                            lng: data.longitudActual.toFixed(4)
+                        });
+                        console.log('[RutaTracking] Calculando ruta desde posición REAL del conductor');
+                        await calcularRutaDinamica(
+                            data.latitudActual,  // Desde donde está AHORA el conductor
+                            data.longitudActual,
+                            data.latitudDestino, // Hasta el destino
+                            data.longitudDestino
+                        );
+                    } else {
+                        // Si no hay GPS actual, mostrar sin ruta pero en modo de espera
+                        console.log('[RutaTracking] ⏳ Esperando GPS REAL del emulador/dispositivo...');
+                        setRouteCoordinates([]); // Limpiar ruta anterior
+                        
+                        // Mostrar toast informativo
+                        if (!document.hidden) { // Solo si la pestaña está visible
+                            toast.info("📱 Esperando ubicación GPS del dispositivo Android...", {
+                                duration: 3000,
+                                position: 'top-center'
+                            });
+                        }
+                    }
+                } else if (data.estado === 'PLANIFICADA' && data.latitudOrigen && data.longitudOrigen && data.latitudDestino && data.longitudDestino) {
+                    // Si la ruta aún no ha iniciado, mostrar desde el origen planificado
+                    console.log('[RutaTracking] Ruta planificada - Mostrando ruta desde origen');
+                    await calcularRutaDinamica(
+                        data.latitudOrigen,
+                        data.longitudOrigen,
+                        data.latitudDestino,
+                        data.longitudDestino
+                    );
+                }
+
+                if (isMounted) {
+                    // Detectar si la ruta recién cambió a EN_CURSO (inició)
+                    if (previousState && previousState !== 'EN_CURSO' && data.estado === 'EN_CURSO') {
+                        console.log('🚀 ¡RUTA INICIADA! Solicitando GPS inmediato del móvil...');
+                        
+                        // Solicitar GPS inmediatamente al iniciar
+                        if (typeof window !== 'undefined' && (window as any).AndroidTracker) {
+                            setTimeout(() => {
+                                try {
+                                    (window as any).AndroidTracker.requestGPSUpdate(id);
+                                    console.log('📱 Solicitud GPS enviada al iniciar ruta');
+                                } catch (error) {
+                                    console.error('❌ Error enviando solicitud GPS:', error);
+                                }
+                            }, 500);
+                        }
+                    }
+                    
+                    previousState = data.estado;
+                    setRuta(data);
+                }
+            } catch (err: any) {
+                if (err.name !== 'AbortError') {
+                    console.error('[RutaTracking] Error cargando ruta:', err);
+                    // No mostrar toast para cada error de red para evitar spam
+                }
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        cargarDatosSafe();
+
+        // Actualizar posición GPS y recalcular ruta cada 2 segundos (match con Android)
+        // Esto hace que la ruta sea flexible y se adapte al movimiento real del conductor
+        const interval = setInterval(() => {
+            if (isMounted) {
+                const currentState = ruta?.estado;
+                if (currentState === 'EN_CURSO') {
+                    console.log('[RutaTracking] 📱 Solicitando actualización de GPS del móvil Android...');
+                    recargarDatos(); // Esto recalculará la ruta desde la nueva posición
+                }
+            }
+        }, 2000); // Reducido a 2s para match con Android
+
+        return () => {
+            clearInterval(interval);
+            if (currentRequest) {
+                currentRequest.abort();
+            }
+        };
+    }, [id]); // ✅ Solo depende de ID de ruta, no de 'ruta'
+
+    // Cleanup cuando el componente se desmonta
+    useEffect(() => {
+        return () => {
+            isMounted = false;
+            if (globalRequest) {
+                globalRequest.abort();
+            }
+            if (simulationInterval) {
+                clearInterval(simulationInterval);
+            }
+        };
+    }, []);
 
     if (loading) return <BackgroundMeteors><div>Cargando...</div></BackgroundMeteors>;
     if (!ruta) return <BackgroundMeteors><div>No encontrada</div></BackgroundMeteors>;
@@ -135,6 +349,24 @@ export default function RutaTracking() {
                                     }}>
                                         RUTA #{ruta.id?.slice(-6).toUpperCase()}
                                     </span>
+                                    
+                                    {/* Indicador de estado GPS */}
+                                    {ruta.estado === 'EN_CURSO' && (
+                                        <span className={styles.badge} style={{
+                                            background: (ruta.latitudActual && ruta.longitudActual) ? 
+                                                'rgba(34, 197, 94, 0.2)' : 
+                                                'rgba(251, 191, 36, 0.2)',
+                                            color: (ruta.latitudActual && ruta.longitudActual) ? 
+                                                '#22c55e' : '#f59e0b',
+                                            fontSize: '0.6rem',
+                                            fontWeight: '700'
+                                        }}>
+                                            {(ruta.latitudActual && ruta.longitudActual) ? 
+                                                '📡 GPS ACTIVO' : 
+                                                '⏳ ESPERANDO GPS'}
+                                        </span>
+                                    )}
+                                    
                                     <span style={{ color: '#4b5563', fontSize: '0.8rem' }}>•</span>
                                     <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{ruta.fecha}</span>
                                 </div>
@@ -162,8 +394,385 @@ export default function RutaTracking() {
                                     destination={[ruta.latitudDestino, ruta.longitudDestino]}
                                     current={[ruta.latitudActual, ruta.longitudActual]}
                                     isDeviated={ruta.desviado}
+                                    routeCoordinates={routeCoordinates}
                                 />
                             </div>
+
+                                    {/* Botón de Debug para forzar GPS */}
+                                    <button
+                                        onClick={async () => {
+                                            console.log('🚨 FORZANDO COORDENADAS MANUAL (Londres)');
+                                            const lat = 51.5074;  // Londres
+                                            const lng = -0.1278;
+                                            
+                                            try {
+                                                const response = await fetch(`${API_URL}/api/rutas/${id}`, {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                        latitudActual: lat,
+                                                        longitudActual: lng
+                                                    })
+                                                });
+                                                
+                                                if (response.ok) {
+                                                    console.log(`✅ Coordenadas manuales enviadas: ${lat}, ${lng}`);
+                                                    // Recargar datos después de 500ms para asegurar que el backend procese
+                                                    setTimeout(() => recargarDatos(), 500);
+                                                } else {
+                                                    console.error('❌ Backend rechazó coordenadas manuales');
+                                                }
+                                            } catch (err) {
+                                                console.error('❌ Error enviando coordenadas manuales:', err);
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '0.8rem 1.2rem',
+                                            background: 'rgba(59, 130, 246, 0.2)',
+                                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                                            borderRadius: '12px',
+                                            fontSize: '0.8rem',
+                                            color: '#3b82f6',
+                                            cursor: 'pointer',
+                                            marginBottom: '1rem',
+                                            width: '100%'
+                                        }}
+                                    >
+                                        🌍 FORZAR COORDENADAS (Londres)
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            console.log('🚨 FORZANDO RECARGA MANUAL DE GPS');
+                                            if (navigator.geolocation) {
+                                                navigator.geolocation.getCurrentPosition(
+                                                    async (position) => {
+                                                        console.log('📡 GPS BROWSER OBTENIDO:', {
+                                                            lat: position.coords.latitude,
+                                                            lng: position.coords.longitude,
+                                                            accuracy: position.coords.accuracy
+                                                        });
+                                                        try {
+                                                            const response = await fetch(`${API_URL}/api/rutas/${id}`, {
+                                                                method: 'PUT',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({
+                                                                    latitudActual: position.coords.latitude,
+                                                                    longitudActual: position.coords.longitude
+                                                                })
+                                                            });
+                                                            if (response.ok) {
+                                                                console.log('✅ GPS del navegador enviado al backend');
+                                                                recargarDatos();
+                                                            } else {
+                                                                console.error('❌ Backend rechazó GPS:', response.status);
+                                                            }
+                                                        } catch (err) {
+                                                            console.error('❌ Error enviando GPS browser:', err);
+                                                        }
+                                                    },
+                                                    (error) => {
+                                                        console.error('❌ Error GPS browser:', error.message || error);
+                                                        console.error('❌ Error GPS code:', error.code);
+                                                        
+                                                        // Mostrar mensaje amigable al usuario
+                                                        switch(error.code) {
+                                                            case error.PERMISSION_DENIED:
+                                                                alert('❌ Permiso de GPS denegado. Por favor, permite el acceso a la ubicación en tu navegador.');
+                                                                break;
+                                                            case error.POSITION_UNAVAILABLE:
+                                                                alert('❌ GPS no disponible. Revisa tu conexión GPS.');
+                                                                break;
+                                                            case error.TIMEOUT:
+                                                                alert('❌ Timeout al obtener GPS. Intenta de nuevo.');
+                                                                break;
+                                                            default:
+                                                                alert(`❌ Error GPS: ${error.message || 'Desconocido'}`);
+                                                        }
+                                                    },
+                                                    { 
+                                                        enableHighAccuracy: false,  // Cambiado a false para emulador
+                                                        timeout: 10000,  // Aumentado timeout
+                                                        maximumAge: 60000   // Permite ubicación cacheada
+                                                    }
+                                                );
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '0.8rem 1.2rem',
+                                            background: 'rgba(239, 68, 68, 0.2)',
+                                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                                            borderRadius: '12px',
+                                            fontSize: '0.8rem',
+                                            color: '#ef4444',
+                                            cursor: 'pointer',
+                                            marginBottom: '1rem',
+                                            width: '100%'
+                                        }}
+                                    >
+                                        🚨 DEBUG: Forzar GPS del Navegador
+                                    </button>
+
+                                    <button
+                                        onClick={async () => {
+                                            console.log('📱 LOCALIZANDO DISPOSITIVO MÓVIL ANDROID...');
+                                            toast.loading('📱 Buscando dispositivo móvil...', { id: 'locate-mobile' });
+                                            
+                                            try {
+                                                // Recargar datos actuales para obtener última ubicación del móvil
+                                                console.log('🔄 Obteniendo última ubicación conocida del móvil...');
+                                                await recargarDatos();
+                                                
+                                                if (ruta?.latitudActual && ruta?.longitudActual) {
+                                                    console.log('📱 Ubicación del móvil encontrada:', {
+                                                        lat: ruta.latitudActual,
+                                                        lng: ruta.longitudActual
+                                                    });
+                                                    
+                                                    // Centrar el mapa en la ubicación actual del móvil
+                                                    setRouteCoordinates([[ruta.latitudActual, ruta.longitudActual]]);
+                                                    toast.success('📱 Dispositivo móvil localizado correctamente', { id: 'locate-mobile' });
+                                                } else {
+                                                    toast.error('❌ No hay ubicación GPS del dispositivo móvil', { id: 'locate-mobile' });
+                                                }
+                                            } catch (error) {
+                                                console.error('❌ Error localizando dispositivo móvil:', error);
+                                                toast.error('❌ No se pudo localizar el dispositivo móvil', { id: 'locate-mobile' });
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '1rem 1.2rem',
+                                            background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(59, 130, 246, 0.2))',
+                                            border: '1px solid rgba(34, 197, 94, 0.4)',
+                                            borderRadius: '12px',
+                                            fontSize: '0.9rem',
+                                            color: '#22c55e',
+                                            cursor: 'pointer',
+                                            marginBottom: '1rem',
+                                            width: '100%',
+                                            fontWeight: '700',
+                                            boxShadow: '0 4px 15px rgba(34, 197, 94, 0.2)'
+                                        }}
+                                    >
+                                        📱 LOCALIZAR DISPOSITIVO MÓVIL ANDROID
+                                    </button>
+
+                                    <button
+                                        onClick={async () => {
+                                            console.log('🚀 SOLICITANDO GPS EN TIEMPO REAL DEL MÓVIL...');
+                                            toast.loading('📡 Solicitando GPS del dispositivo...', { id: 'request-gps' });
+                                            
+                                            // Enviar una solicitud directa al móvil para que envíe su ubicación
+                                            if (typeof window !== 'undefined' && (window as any).AndroidTracker) {
+                                                console.log('📱 Enviando solicitud GPS a Android Tracker...');
+                                                try {
+                                                    (window as any).AndroidTracker.requestGPSUpdate(id);
+                                                    toast.success('📡 Solicitud GPS enviada al dispositivo', { id: 'request-gps' });
+                                                    
+                                                    // Esperar 2 segundos y recargar datos para obtener la respuesta
+                                                    setTimeout(() => {
+                                                        recargarDatos();
+                                                    }, 2000);
+                                                } catch (error) {
+                                                    console.error('❌ Error comunicando con Android:', error);
+                                                    toast.error('❌ No se pudo comunicar con el dispositivo Android', { id: 'request-gps' });
+                                                }
+                                            } else {
+                                                console.log('⚠️ AndroidTracker no disponible - usando fallback de polling...');
+                                                
+                                                // Fallback: Intentar forzar una actualización más agresiva
+                                                for (let i = 0; i < 5; i++) {
+                                                    setTimeout(async () => {
+                                                        await recargarDatos();
+                                                        console.log(`🔄 Intento ${i + 1} de obtener GPS del móvil...`);
+                                                    }, i * 1000);
+                                                }
+                                                
+                                                toast.success('🔄 Iniciando actualización continua de GPS', { id: 'request-gps' });
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '1rem 1.2rem',
+                                            background: 'linear-gradient(135deg, rgba(251, 146, 60, 0.2), rgba(251, 191, 36, 0.2))',
+                                            border: '1px solid rgba(251, 146, 60, 0.4)',
+                                            borderRadius: '12px',
+                                            fontSize: '0.9rem',
+                                            color: '#fb923c',
+                                            cursor: 'pointer',
+                                            marginBottom: '1rem',
+                                            width: '100%',
+                                            fontWeight: '700',
+                                            boxShadow: '0 4px 15px rgba(251, 146, 60, 0.2)'
+                                        }}
+                                    >
+                                        🚀 SOLICITAR GPS EN TIEMPO REAL
+                                    </button>
+
+                                    <button
+                                        onClick={async () => {
+                                            console.log('🧪 SIMULANDO GPS DESDE ANDROID (PRUEBAS)...');
+                                            toast.loading('🧪 Simulando GPS Android...', { id: 'simulate-gps' });
+                                            
+                                            // Simular coordenadas de Madrid en movimiento
+                                            const baseLat = 40.4168;
+                                            const baseLng = -3.7038;
+                                            const randomOffset = () => (Math.random() - 0.5) * 0.001; // Pequeños movimientos
+                                            
+                                            const simulatedLat = baseLat + randomOffset();
+                                            const simulatedLng = baseLng + randomOffset();
+                                            
+                                            try {
+                                                // Usar el endpoint existente PUT mientras el backend se recompila
+                                                const response = await fetch(`${API_URL}/api/rutas/${id}`, {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                        latitudActual: simulatedLat,
+                                                        longitudActual: simulatedLng
+                                                    })
+                                                });
+                                                
+                                                if (response.ok) {
+                                                    console.log('✅ GPS simulado enviado correctamente:', { simulatedLat, simulatedLng });
+                                                    toast.success('🧪 GPS Android simulado correctamente', { id: 'simulate-gps' });
+                                                    
+                                                    // Recargar datos para ver el efecto inmediato
+                                                    setTimeout(() => {
+                                                        recargarDatos();
+                                                    }, 500);
+                                                } else {
+                                                    throw new Error(`HTTP ${response.status}`);
+                                                }
+                                            } catch (error) {
+                                                console.error('❌ Error simulando GPS Android:', error);
+                                                toast.error('❌ Error al simular GPS Android', { id: 'simulate-gps' });
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '1rem 1.2rem',
+                                            background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.2))',
+                                            border: '1px solid rgba(168, 85, 247, 0.4)',
+                                            borderRadius: '12px',
+                                            fontSize: '0.9rem',
+                                            color: '#a855f7',
+                                            cursor: 'pointer',
+                                            marginBottom: '1rem',
+                                            width: '100%',
+                                            fontWeight: '700',
+                                            boxShadow: '0 4px 15px rgba(168, 85, 247, 0.2)'
+                                        }}
+                                    >
+                                        🧪 SIMULAR GPS ANDROID (PRUEBAS)
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            if (simulationInterval) {
+                                                clearInterval(simulationInterval);
+                                                simulationInterval = null;
+                                                toast.info('🛑 Simulación GPS detenida', { id: 'simulate-continuous' });
+                                            } else {
+                                                console.log('🚬 INICIANDO SIMULACIÓN CONTINUA DE GPS...');
+                                                toast.loading('🚬 Iniciando simulación continua...', { id: 'simulate-continuous' });
+                                                
+                                                // Base coordinates (Madrid area)
+                                                let currentLat = 40.4168;
+                                                let currentLng = -3.7038;
+                                                
+                                                simulationInterval = setInterval(async () => {
+                                                    // Simular movimiento gradual
+                                                    currentLat += (Math.random() - 0.5) * 0.0005; // Movimiento pequeño
+                                                    currentLng += (Math.random() - 0.5) * 0.0005;
+                                                    
+                                                    try {
+                                                        const response = await fetch(`${API_URL}/api/rutas/${id}`, {
+                                                            method: 'PUT',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({
+                                                                latitudActual: currentLat,
+                                                                longitudActual: currentLng
+                                                            })
+                                                        });
+                                                        
+                                                        if (response.ok) {
+                                                            console.log(`🚬 GPS simulado continuo: [${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}]`);
+                                                            
+                                                            // Actualizar también las coordenadas de la ruta
+                                                            setRouteCoordinates([[currentLat, currentLng]]);
+                                                        }
+                                                    } catch (error) {
+                                                        console.error('❌ Error en simulación continua:', error);
+                                                    }
+                                                }, 2000); // Cada 2 segundos como el Android real
+                                                
+                                                setTimeout(() => {
+                                                    toast.success('🚬 Simulación GPS continua iniciada (cada 2s)', { id: 'simulate-continuous' });
+                                                }, 500);
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '1rem 1.2rem',
+                                            background: simulationInterval 
+                                                ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.2))'
+                                                : 'linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.2))',
+                                            border: simulationInterval 
+                                                ? '1px solid rgba(239, 68, 68, 0.4)'
+                                                : '1px solid rgba(34, 197, 94, 0.4)',
+                                            borderRadius: '12px',
+                                            fontSize: '0.9rem',
+                                            color: simulationInterval ? '#ef4444' : '#22c55e',
+                                            cursor: 'pointer',
+                                            marginBottom: '1rem',
+                                            width: '100%',
+                                            fontWeight: '700',
+                                            boxShadow: simulationInterval 
+                                                ? '0 4px 15px rgba(239, 68, 68, 0.2)'
+                                                : '0 4px 15px rgba(34, 197, 94, 0.2)',
+                                            animation: simulationInterval ? 'pulse 2s infinite' : 'none'
+                                        }}
+                                    >
+                                        {simulationInterval ? '🛑 DETENER SIMULACIÓN GPS' : '🚬 INICIAR SIMULACIÓN CONTINUA'}
+                                    </button>
+
+                                    {/* Indicador de estado de ruta */}
+                                    {isCalculatingRoute && (
+                                        <div style={{
+                                            padding: '0.8rem 1.2rem',
+                                            background: 'rgba(59, 246, 59, 0.1)',
+                                            border: '1px solid rgba(59, 246, 59, 0.3)',
+                                            borderRadius: '12px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.8rem',
+                                            fontSize: '0.85rem',
+                                            color: '#3bf63b'
+                                        }}>
+                                            <div style={{
+                                                width: '12px',
+                                                height: '12px',
+                                                border: '2px solid #3bf63b',
+                                                borderTopColor: 'transparent',
+                                                borderRadius: '50%',
+                                                animation: 'spin 1s linear infinite'
+                                            }}></div>
+                                            Calculando ruta óptima por calles...
+                                        </div>
+                                    )}
+                                    {routeCoordinates.length > 0 && !isCalculatingRoute && (
+                                <div style={{
+                                    padding: '0.8rem 1.2rem',
+                                    background: 'rgba(59, 246, 59, 0.05)',
+                                    border: '1px solid rgba(59, 246, 59, 0.2)',
+                                    borderRadius: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.8rem',
+                                    fontSize: '0.85rem',
+                                    color: '#3bf63b'
+                                }}>
+                                    ✓ Ruta dinámica calculada con {routeCoordinates.length} puntos
+                                </div>
+                            )}
 
                             {/* Timeline Horizontal (Simulated) */}
                             <div className={styles.card} style={{ padding: '1.5rem', background: 'rgba(0,0,0,0.2)' }}>
