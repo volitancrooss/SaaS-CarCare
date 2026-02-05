@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import styles from "./page.module.css";
 import BackgroundMeteors from "@/componentes/BackgroundMeteors";
 import LocationInput from "@/componentes/LocationInput";
+import dynamic from "next/dynamic";
 import {
   BarChart,
   Bar,
@@ -42,17 +43,76 @@ interface Ruta {
   longitudOrigen?: number;
   latitudDestino?: number;
   longitudDestino?: number;
+  latitudActual?: number;
+  longitudActual?: number;
+  ultimaActualizacionGPS?: string;
 }
+
+// Dynamic import para el mapa de tracking global (evitar SSR)
+const MapTrackingGlobal = dynamic(() => import("@/componentes/MapTrackingGlobal"), {
+  ssr: false,
+  loading: () => (
+    <div style={{
+      height: "500px",
+      background: "rgba(0,0,0,0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: "16px",
+      color: "#888"
+    }}>
+      Cargando Mapa de Tracking...
+    </div>
+  )
+});
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://saas-carcare-production.up.railway.app";
 
 export default function Dashboard() {
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<'flota' | 'nuevo' | 'rutas' | 'estadisticas'>('flota');
+  const [activeTab, setActiveTab] = useState<'flota' | 'nuevo' | 'rutas' | 'estadisticas' | 'tracking'>('flota');
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
   const [rutas, setRutas] = useState<Ruta[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Helper para calcular estado de conexión del conductor
+  // Si hay GPS activo pero no timestamp, significa que el conductor está online 
+  // (el timestamp se añadió después de que ya había datos)
+  const getConnectionStatus = (timestamp: string | undefined, hasActiveGPS: boolean = false) => {
+    // Si hay GPS activo pero no hay timestamp, consideramos que está online
+    if (!timestamp && hasActiveGPS) {
+      return { status: 'online' as const, text: 'GPS Activo', color: '#22c55e' };
+    }
+
+    if (!timestamp) return { status: 'offline' as const, text: 'Sin señal', color: '#6b7280' };
+
+    const now = new Date();
+    const lastUpdate = new Date(timestamp);
+    const diffSeconds = Math.floor((now.getTime() - lastUpdate.getTime()) / 1000);
+
+    if (diffSeconds <= 30) {
+      return {
+        status: 'online' as const,
+        text: diffSeconds < 5 ? 'Ahora' : `Hace ${diffSeconds}s`,
+        color: '#22c55e'
+      };
+    } else if (diffSeconds <= 120) {
+      const mins = Math.floor(diffSeconds / 60);
+      return {
+        status: 'idle' as const,
+        text: mins > 0 ? `Hace ${mins}m ${diffSeconds % 60}s` : `Hace ${diffSeconds}s`,
+        color: '#f59e0b'
+      };
+    } else {
+      const mins = Math.floor(diffSeconds / 60);
+      return {
+        status: 'offline' as const,
+        text: mins < 60 ? `Hace ${mins} min` : `Hace ${Math.floor(mins / 60)}h`,
+        color: '#6b7280'
+      };
+    }
+  };
 
   const datosGrafico = useMemo(() => {
     const nombresMeses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -170,7 +230,23 @@ export default function Dashboard() {
 
   useEffect(() => {
     cargarDatos();
-  }, []);
+
+    // Auto-refresh cada 3 segundos cuando estamos en la pestaña de tracking
+    // Esto permite detectar cuando un conductor se desconecta (el timestamp dejará de actualizarse)
+    let intervalId: NodeJS.Timeout | null = null;
+
+    if (activeTab === 'tracking') {
+      intervalId = setInterval(() => {
+        cargarDatos();
+      }, 3000);
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [activeTab]);
 
   const handleCrearVehiculo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -352,6 +428,16 @@ export default function Dashboard() {
               onClick={() => setActiveTab('estadisticas')}
             >
               Estadísticas
+            </button>
+            <button
+              className={`${styles.navButton} ${activeTab === 'tracking' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('tracking')}
+              style={{
+                background: activeTab === 'tracking' ? 'linear-gradient(135deg, rgba(59, 246, 59, 0.2), rgba(34, 197, 94, 0.2))' : undefined,
+                border: activeTab === 'tracking' ? '1px solid rgba(59, 246, 59, 0.5)' : undefined
+              }}
+            >
+              📍 Tracking en Vivo
             </button>
             <button
               className={`${styles.navButton} ${activeTab === 'nuevo' ? styles.activeTab : ''}`}
@@ -743,6 +829,161 @@ export default function Dashboard() {
                   <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#888' }}>
                     Reducción del 10% mediante conducción eficiente y rutas cortas.
                   </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'tracking' && (
+            <div className={styles.rutasContainer} style={{ gridTemplateColumns: '1fr' }}>
+              <div className={styles.card} style={{ padding: '0', overflow: 'hidden' }}>
+                <div style={{
+                  padding: '1.5rem',
+                  background: 'linear-gradient(135deg, rgba(59, 246, 59, 0.1), rgba(34, 197, 94, 0.05))',
+                  borderBottom: '1px solid rgba(59, 246, 59, 0.2)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.3rem', fontWeight: '800', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1.5rem' }}>📍</span>
+                      Tracking de Conductores en Tiempo Real
+                    </h3>
+                    <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                      Visualiza la ubicación GPS de todos los conductores activos de la flota
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 1rem',
+                      background: 'rgba(59, 246, 59, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(59, 246, 59, 0.3)'
+                    }}>
+                      <div style={{
+                        width: '10px',
+                        height: '10px',
+                        borderRadius: '50%',
+                        backgroundColor: '#3bf63b',
+                        animation: 'pulse 2s infinite'
+                      }}></div>
+                      <span style={{ fontSize: '0.85rem', color: '#3bf63b', fontWeight: '700' }}>
+                        {rutas.filter(r => r.estado === 'EN_CURSO').length} conductores activos
+                      </span>
+                    </div>
+                    <button
+                      onClick={cargarDatos}
+                      className={styles.submitButton}
+                      style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}
+                    >
+                      🔄 Actualizar
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ height: '550px', position: 'relative' }}>
+                  <MapTrackingGlobal
+                    rutasActivas={rutas.filter(r => r.estado === 'EN_CURSO' || r.estado === 'PLANIFICADA')}
+                    onRutaClick={(rutaId) => router.push(`/ruta/${rutaId}`)}
+                  />
+                </div>
+              </div>
+
+              {/* Lista de rutas activas debajo del mapa */}
+              <div style={{ marginTop: '2rem' }}>
+                <h4 style={{ marginBottom: '1rem', color: '#9ca3af', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  Rutas con Tracking Activo ({rutas.filter(r => r.estado === 'EN_CURSO').length})
+                </h4>
+                <div className={styles.grid}>
+                  {rutas.filter(r => r.estado === 'EN_CURSO').map(ruta => {
+                    const hasActiveGPS = !!(ruta.latitudActual && ruta.longitudActual);
+                    const connectionStatus = getConnectionStatus(ruta.ultimaActualizacionGPS, hasActiveGPS);
+
+                    return (
+                      <div
+                        key={ruta.id}
+                        className={styles.card}
+                        onClick={() => router.push(`/ruta/${ruta.id}`)}
+                        style={{
+                          cursor: 'pointer',
+                          borderLeft: `4px solid ${connectionStatus.color}`,
+                          background: 'linear-gradient(145deg, rgba(30,30,40,0.95), rgba(20,20,25,0.95))'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{
+                              width: '10px',
+                              height: '10px',
+                              borderRadius: '50%',
+                              backgroundColor: connectionStatus.color,
+                              animation: connectionStatus.status === 'online' ? 'pulse 1.5s infinite' : 'none',
+                              boxShadow: connectionStatus.status === 'online' ? `0 0 10px ${connectionStatus.color}` : 'none'
+                            }}></div>
+                            <span style={{ fontSize: '0.75rem', color: connectionStatus.color, fontWeight: '700' }}>
+                              {connectionStatus.status === 'online' ? '🟢 ONLINE' :
+                                connectionStatus.status === 'idle' ? '🟡 IDLE' : '⚫ OFFLINE'}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>
+                            #{ruta.id?.slice(-6).toUpperCase()}
+                          </span>
+                        </div>
+
+                        <h4 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.5rem' }}>
+                          {ruta.origen} → {ruta.destino}
+                        </h4>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#9ca3af' }}>
+                          <span>Vehículo: {ruta.vehiculoId?.slice(-6) || 'N/A'}</span>
+                          <span style={{ color: connectionStatus.color, fontWeight: '600' }}>
+                            📡 {connectionStatus.text}
+                          </span>
+                        </div>
+
+                        {ruta.latitudActual && ruta.longitudActual && (
+                          <div style={{
+                            marginTop: '0.5rem',
+                            fontSize: '0.7rem',
+                            color: connectionStatus.color,
+                            background: `${connectionStatus.color}15`,
+                            padding: '0.4rem 0.6rem',
+                            borderRadius: '6px',
+                            textAlign: 'center',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <span>📍 {ruta.latitudActual.toFixed(4)}, {ruta.longitudActual.toFixed(4)}</span>
+                            {ruta.ultimaActualizacionGPS && (
+                              <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>
+                                🕐 {new Date(ruta.ultimaActualizacionGPS).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {rutas.filter(r => r.estado === 'EN_CURSO').length === 0 && (
+                    <div style={{
+                      gridColumn: '1 / -1',
+                      textAlign: 'center',
+                      padding: '3rem',
+                      color: '#6b7280'
+                    }}>
+                      <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>🚗</div>
+                      <p>No hay conductores activos en este momento</p>
+                      <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                        Los conductores aparecerán aquí cuando inicien una ruta
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

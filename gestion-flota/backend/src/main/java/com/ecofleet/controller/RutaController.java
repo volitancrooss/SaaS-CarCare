@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.time.Instant;
 
 @RestController
 @RequestMapping("/api/rutas")
@@ -60,6 +61,14 @@ public class RutaController {
                         ruta.setLongitudActual(rutaActualizada.getLongitudActual());
                         System.out.println("[RutaController] GPS RECIBIDO del dispositivo: " + rutaActualizada.getLongitudActual());
                     }
+                    
+                    // Actualizar timestamp si se recibieron coordenadas GPS
+                    if (rutaActualizada.getLatitudActual() != null || rutaActualizada.getLongitudActual() != null) {
+                        String timestamp = Instant.now().toString();
+                        ruta.setUltimaActualizacionGPS(timestamp);
+                        System.out.println("[RutaController] ⏱️ Timestamp GPS actualizado: " + timestamp);
+                    }
+                    
                     if (rutaActualizada.getDesviado() != null) ruta.setDesviado(rutaActualizada.getDesviado());
                     
                     Ruta rutaGuardada = rutaRepository.save(ruta);
@@ -83,6 +92,11 @@ public class RutaController {
                 .map(ruta -> {
                     ruta.setLatitudActual(gps.getLatitud());
                     ruta.setLongitudActual(gps.getLongitud());
+                    
+                    // Guardar timestamp de última actualización GPS
+                    String timestamp = Instant.now().toString();
+                    ruta.setUltimaActualizacionGPS(timestamp);
+                    System.out.println("[RutaController] ⏱️ Timestamp GPS: " + timestamp);
                     
                     // Calcular si está desviado (distancia simple del camino)
                     if (ruta.getLatitudOrigen() != null && ruta.getLongitudOrigen() != null &&

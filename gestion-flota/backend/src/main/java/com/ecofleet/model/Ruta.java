@@ -28,6 +28,9 @@ public class Ruta {
     private Double longitudActual;
     
     private Boolean desviado = false;
+    
+    // Timestamp de la última actualización GPS recibida
+    private String ultimaActualizacionGPS;
 
     // Getters y Setters manuales para asegurar compatibilidad
     public String getId() { return id; }
@@ -71,4 +74,7 @@ public class Ruta {
     
     public Boolean getDesviado() { return desviado; }
     public void setDesviado(Boolean desviado) { this.desviado = desviado; }
+    
+    public String getUltimaActualizacionGPS() { return ultimaActualizacionGPS; }
+    public void setUltimaActualizacionGPS(String ultimaActualizacionGPS) { this.ultimaActualizacionGPS = ultimaActualizacionGPS; }
 }

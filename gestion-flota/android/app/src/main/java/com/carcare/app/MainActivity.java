@@ -88,8 +88,8 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Cargamos la URL del panel de conductor
-        mWebView.loadUrl(WEB_URL + "/conductor"); 
+        // Cargamos la URL del panel de conductores (interfaz optimizada para móvil)
+        mWebView.loadUrl(WEB_URL + "/conductor");
     }
 
     public class WebAppInterface {

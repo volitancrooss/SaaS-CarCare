@@ -104,7 +104,7 @@ export default function ConductorDashboard() {
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 toast.success(`GPS encontrado: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
-                
+
                 // Actualizar posición inicial inmediatamente
                 try {
                     await fetch(`${API_URL}/api/rutas/${rutaId}`, {
@@ -146,16 +146,15 @@ export default function ConductorDashboard() {
                             toast.error(`Error GPS: ${error.message}`);
                         }
                     },
-                    { 
-                        enableHighAccuracy: true, 
-                        timeout: 15000, 
-                        maximumAge: 0,
-                        desiredAccuracy: 10 
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 15000,
+                        maximumAge: 0
                     }
                 );
 
                 // Guardar el watchId para poder limpiarlo después
-                const interval = setInterval(() => {}, 1000);
+                const interval = setInterval(() => { }, 1000);
                 (interval as any).watchId = watchId;
                 setGpsInterval(interval);
             },
@@ -169,10 +168,10 @@ export default function ConductorDashboard() {
                     toast.error(`❌ Error GPS: ${error.message}`);
                 }
             },
-            { 
-                enableHighAccuracy: true, 
-                timeout: 20000, 
-                maximumAge: 60000 
+            {
+                enableHighAccuracy: true,
+                timeout: 20000,
+                maximumAge: 60000
             }
         );
     };
