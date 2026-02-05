@@ -10,18 +10,25 @@ import java.time.Instant;
 
 @RestController
 @RequestMapping("/api/rutas")
+@CrossOrigin(origins = "*")
 public class RutaController {
 
     @Autowired
     private RutaRepository rutaRepository;
 
     @GetMapping
-    public List<Ruta> listarRutas() {
+    public List<Ruta> listarRutas(@RequestHeader(value = "X-User-Id", required = false) String usuarioId) {
+        if (usuarioId != null) {
+            return rutaRepository.findByUsuarioId(usuarioId);
+        }
         return rutaRepository.findAll();
     }
 
     @PostMapping
-    public Ruta crearRuta(@RequestBody Ruta ruta) {
+    public Ruta crearRuta(@RequestBody Ruta ruta, @RequestHeader(value = "X-User-Id", required = false) String usuarioId) {
+        if (usuarioId != null) {
+            ruta.setUsuarioId(usuarioId);
+        }
         if (ruta.getEstado() == null) {
             ruta.setEstado("PLANIFICADA");
         }
@@ -51,30 +58,22 @@ public class RutaController {
                     
                     if (rutaActualizada.getEstado() != null) {
                         ruta.setEstado(rutaActualizada.getEstado());
-                        System.out.println("[RutaController] Estado actualizado: " + rutaActualizada.getEstado());
                     }
                     if (rutaActualizada.getLatitudActual() != null) {
                         ruta.setLatitudActual(rutaActualizada.getLatitudActual());
-                        System.out.println("[RutaController] GPS RECIBIDO del dispositivo: " + rutaActualizada.getLatitudActual());
                     }
                     if (rutaActualizada.getLongitudActual() != null) {
                         ruta.setLongitudActual(rutaActualizada.getLongitudActual());
-                        System.out.println("[RutaController] GPS RECIBIDO del dispositivo: " + rutaActualizada.getLongitudActual());
                     }
                     
-                    // Actualizar timestamp si se recibieron coordenadas GPS
                     if (rutaActualizada.getLatitudActual() != null || rutaActualizada.getLongitudActual() != null) {
                         String timestamp = Instant.now().toString();
                         ruta.setUltimaActualizacionGPS(timestamp);
-                        System.out.println("[RutaController] ⏱️ Timestamp GPS actualizado: " + timestamp);
                     }
                     
                     if (rutaActualizada.getDesviado() != null) ruta.setDesviado(rutaActualizada.getDesviado());
                     
-                    Ruta rutaGuardada = rutaRepository.save(ruta);
-                    System.out.println("[RutaController] Ruta actualizada - Estado: " + rutaGuardada.getEstado() + 
-                                     ", GPS: [" + rutaGuardada.getLatitudActual() + ", " + rutaGuardada.getLongitudActual() + "]");
-                    return rutaGuardada;
+                    return rutaRepository.save(ruta);
                 })
                 .orElse(null);
     }
@@ -124,7 +123,6 @@ public class RutaController {
                                 // Limitar a valores razonables (0-200 km/h)
                                 velocidad = Math.max(0, Math.min(200, velocidad));
                                 ruta.setVelocidadActualKmh(velocidad);
-                                System.out.println("[RutaController] 🚗 Velocidad calculada: " + String.format("%.1f", velocidad) + " km/h");
                             } else {
                                 ruta.setVelocidadActualKmh(0.0); // Detenido
                             }
@@ -143,7 +141,6 @@ public class RutaController {
                             ruta.getLatitudDestino(), ruta.getLongitudDestino()
                         );
                         ruta.setDistanciaRestanteKm(distanciaRestante);
-                        System.out.println("[RutaController] 📍 Distancia restante: " + String.format("%.2f", distanciaRestante) + " km");
                     }
                     
                     // Calcular si está desviado
@@ -158,17 +155,9 @@ public class RutaController {
                         
                         // Si la distancia actual es mayor que la distancia total + 20% margen, está desviado
                         ruta.setDesviado(distanciaActualADestino > (distanciaTotal * 1.2));
-                        
-                        System.out.println("[RutaController] 📊 Análisis - Distancia total: " + 
-                                         String.format("%.2f", distanciaTotal) + "km, Restante: " + 
-                                         String.format("%.2f", distanciaActualADestino) + "km, Desviado: " + ruta.getDesviado());
                     }
                     
-                    Ruta rutaGuardada = rutaRepository.save(ruta);
-                    System.out.println("[RutaController] ✅ GPS actualizado - Pos: [" + 
-                                     rutaGuardada.getLatitudActual() + ", " + rutaGuardada.getLongitudActual() + 
-                                     "], Vel: " + String.format("%.1f", rutaGuardada.getVelocidadActualKmh()) + " km/h");
-                    return rutaGuardada;
+                    return rutaRepository.save(ruta);
                 })
                 .orElse(null);
     }
@@ -189,12 +178,6 @@ public class RutaController {
     // Endpoint para solicitar actualización de GPS al dispositivo móvil
     @PostMapping("/{id}/request-gps")
     public String solicitarGPSMovil(@PathVariable String id) {
-        System.out.println("[RutaController] 📡 Solicitud de GPS recibida para ruta: " + id);
-        
-        // Aquí podríamos implementar WebSocket, SSE, o FCM para notificar al móvil
-        // Por ahora, devolvemos una respuesta indicando que la solicitud fue recibida
-        // El móvil debería estar haciendo polling a este endpoint o escuchando notificaciones
-        
         return "GPS_REQUEST_SENT";
     }
 

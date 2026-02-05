@@ -9,6 +9,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
 public class Ruta {
     @Id
     private String id;
+    
+    private String usuarioId; // ID del usuario/empresa propietaria
 
     private String origen;
     private String destino;

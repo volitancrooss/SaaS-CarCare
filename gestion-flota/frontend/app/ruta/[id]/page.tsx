@@ -52,6 +52,22 @@ export default function RutaTracking() {
     const abortControllerRef = useRef<AbortController | null>(null);
     const previousStateRef = useRef<string | undefined>(undefined);
 
+    // Helper to get auth headers
+    const getAuthHeaders = useCallback(() => {
+        if (typeof window === 'undefined') return { 'Content-Type': 'application/json' };
+        const userStr = localStorage.getItem("user");
+        if (!userStr) return { 'Content-Type': 'application/json' };
+        try {
+            const user = JSON.parse(userStr);
+            return {
+                'Content-Type': 'application/json',
+                'X-User-Id': user.id
+            };
+        } catch (e) {
+            return { 'Content-Type': 'application/json' };
+        }
+    }, []);
+
     const calcularRutaDinamica = useCallback(async (currentLat: number, currentLng: number, destLat: number, destLng: number) => {
         try {
             setIsCalculatingRoute(true);
@@ -90,7 +106,8 @@ export default function RutaTracking() {
         try {
             console.log('[RutaTracking] Cargando datos de ruta:', id);
             const res = await fetch(`${API_URL}/api/rutas/${id}`, {
-                signal: abortControllerRef.current.signal
+                signal: abortControllerRef.current.signal,
+                headers: getAuthHeaders() as any
             });
 
             if (!res.ok) {
@@ -161,7 +178,7 @@ export default function RutaTracking() {
                 setLoading(false);
             }
         }
-    }, [id, calcularRutaDinamica]);
+    }, [id, calcularRutaDinamica, getAuthHeaders]);
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -496,7 +513,7 @@ export default function RutaTracking() {
 
                                             await fetch(`${API_URL}/api/rutas/${id}`, {
                                                 method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
+                                                headers: getAuthHeaders() as any,
                                                 body: JSON.stringify({ estado: nuevoEstado })
                                             });
                                             setRuta({ ...ruta, estado: nuevoEstado });

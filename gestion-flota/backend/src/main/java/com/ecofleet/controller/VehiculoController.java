@@ -10,18 +10,26 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/vehiculos")
+@CrossOrigin(origins = "*")
 public class VehiculoController {
 
     @Autowired
     private VehiculoRepository vehiculoRepository;
 
     @GetMapping
-    public List<Vehiculo> obtenerTodos() {
+    public List<Vehiculo> obtenerTodos(@RequestHeader(value = "X-User-Id", required = false) String usuarioId) {
+        if (usuarioId != null) {
+            return vehiculoRepository.findByUsuarioId(usuarioId);
+        }
         return vehiculoRepository.findAll();
     }
 
     @PostMapping
-    public Vehiculo crearVehiculo(@RequestBody Vehiculo vehiculo) {
+    public Vehiculo crearVehiculo(@RequestBody Vehiculo vehiculo, 
+                                 @RequestHeader(value = "X-User-Id", required = false) String usuarioId) {
+        if (usuarioId != null) {
+            vehiculo.setUsuarioId(usuarioId);
+        }
         return vehiculoRepository.save(vehiculo);
     }
 

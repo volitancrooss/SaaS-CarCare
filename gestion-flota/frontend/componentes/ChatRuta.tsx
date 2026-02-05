@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import styles from "../app/page.module.css";
+import styles from "../app/dashboard/page.module.css";
 
 interface Mensaje {
     id?: string;
@@ -23,9 +23,27 @@ export default function ChatRuta({ rutaId, rol }: ChatProps) {
     const [nuevoMensaje, setNuevoMensaje] = useState("");
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    // Helper to get auth headers
+    const getAuthHeaders = () => {
+        if (typeof window === 'undefined') return { 'Content-Type': 'application/json' };
+        const userStr = localStorage.getItem("user");
+        if (!userStr) return { 'Content-Type': 'application/json' };
+        try {
+            const user = JSON.parse(userStr);
+            return {
+                'Content-Type': 'application/json',
+                'X-User-Id': user.id
+            };
+        } catch (e) {
+            return { 'Content-Type': 'application/json' };
+        }
+    };
+
     const cargarMensajes = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/mensajes/${rutaId}`);
+            const res = await fetch(`${API_URL}/api/mensajes/${rutaId}`, {
+                headers: getAuthHeaders() as any
+            });
             if (res.ok) setMensajes(await res.json());
         } catch (err) {
             console.error("Error cargando chat:", err);
@@ -57,7 +75,7 @@ export default function ChatRuta({ rutaId, rol }: ChatProps) {
         try {
             const res = await fetch(`${API_URL}/api/mensajes`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders() as any,
                 body: JSON.stringify(mensajeObj)
             });
             if (res.ok) {

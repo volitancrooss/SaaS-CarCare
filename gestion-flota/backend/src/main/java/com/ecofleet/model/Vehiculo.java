@@ -10,6 +10,8 @@ public class Vehiculo {
     @Id
     private String id; // En Mongo los IDs suelen ser Strings (ObjectIds)
 
+    private String usuarioId; // ID del usuario/empresa propietaria
+
     private String matricula;
     private String modelo;
     private String marca;

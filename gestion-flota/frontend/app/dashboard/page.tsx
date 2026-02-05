@@ -76,14 +76,27 @@ export default function Dashboard() {
   const [rutas, setRutas] = useState<Ruta[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Helper to get auth headers
+  const getAuthHeaders = useCallback(() => {
+    if (typeof window === 'undefined') return { 'Content-Type': 'application/json' };
+    const userStr = localStorage.getItem("user");
+    if (!userStr) return { 'Content-Type': 'application/json' };
+    try {
+      const user = JSON.parse(userStr);
+      return {
+        'Content-Type': 'application/json',
+        'X-User-Id': user.id // Assuming user object from login has 'id'
+      };
+    } catch (e) {
+      return { 'Content-Type': 'application/json' };
+    }
+  }, []);
+
   // Check auth
   useEffect(() => {
     const userStr = localStorage.getItem("user");
     if (!userStr) {
       router.push("/login");
-    } else {
-      // Solo dejamos de cargar si hay usuario, pero permitimos que cargue los datos después
-      // No ponemos setLoading(false) aquí inmediatamente porque queremos que cargue los datos primero
     }
   }, [router]);
 
@@ -95,7 +108,6 @@ export default function Dashboard() {
 
   // Helper para calcular estado de conexión del conductor
   const getConnectionStatus = (timestamp: string | undefined, hasActiveGPS: boolean = false) => {
-    // Si hay GPS activo pero no hay timestamp, consideramos que está online
     if (!timestamp && hasActiveGPS) {
       return { status: 'online' as const, text: 'GPS Activo', color: '#22c55e' };
     }
@@ -132,17 +144,16 @@ export default function Dashboard() {
 
   const datosGrafico = useMemo(() => {
     const nombresMeses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-
     const consumoRealPorMes = new Array(12).fill(0);
 
-    // DATOS DE PRUEBA TEMPORALES (eliminar cuando tengas rutas reales)
+    // DATOS DE PRUEBA TEMPORALES 
     const datosPrueba = [
-      { mes: 0, distancia: 550 }, // Enero: 250km = 20L
-      { mes: 1, distancia: 180 }, // Febrero: 180km = 14.4L  
-      { mes: 2, distancia: 320 }, // Marzo: 320km = 25.6L
-      { mes: 3, distancia: 150 }, // Abril: 150km = 12L
-      { mes: 4, distancia: 980 }, // Mayo: 280km = 22.4L
-      { mes: 5, distancia: 200 }, // Junio: 200km = 16L
+      { mes: 0, distancia: 550 },
+      { mes: 1, distancia: 180 },
+      { mes: 2, distancia: 320 },
+      { mes: 3, distancia: 150 },
+      { mes: 4, distancia: 980 },
+      { mes: 5, distancia: 200 },
     ];
 
     datosPrueba.forEach(dato => {
@@ -158,11 +169,8 @@ export default function Dashboard() {
       consumoRealPorMes[mesIndex] += consumoEstimado;
     });
 
-    // 2. Calcular Predicciones (Media móvil de los últimos 3 meses) y construir array final
     return nombresMeses.map((mes, index) => {
       const consumoReal = Math.round(consumoRealPorMes[index]);
-
-      // Calcular predicción basada en el promedio de hasta 3 meses anteriores
       let suma = 0;
       let conteo = 0;
       for (let i = 1; i <= 3; i++) {
@@ -173,19 +181,14 @@ export default function Dashboard() {
         }
       }
       let prediccionCalculada = 0;
-
       if (conteo > 0) {
         prediccionCalculada = suma / conteo;
       }
-
-      // Proyección inteligente para el mes actual
       const fechaActual = new Date();
       if (index === fechaActual.getMonth()) {
         const diaActual = fechaActual.getDate();
         const diasEnMes = new Date(fechaActual.getFullYear(), fechaActual.getMonth() + 1, 0).getDate();
-        // Proyectamos el consumo actual al final del mes
         const proyeccion = (consumoReal / Math.max(1, diaActual)) * diasEnMes;
-        // Usamos la proyección si es más relevante (ej. sin histórico o proyección alta)
         if (conteo === 0 || proyeccion > prediccionCalculada) {
           prediccionCalculada = proyeccion;
         }
@@ -201,13 +204,9 @@ export default function Dashboard() {
     });
   }, [rutas]);
 
-  // Buscamos el primer mes con valor 0 (que se asume como el "actual" o pendiente)
-  // Si todos tienen datos, usamos el mes del sistema.
   const indexMesCero = datosGrafico.findIndex(d => d.consumo === 0);
   const indexFinal = indexMesCero !== -1 ? indexMesCero : new Date().getMonth();
-
   const datosMesActual = datosGrafico[indexFinal] || { consumo: 0, prediccion: 0 };
-
   const prediccionMesActual = datosMesActual.prediccion;
   const ahorroPotencial = Math.round(prediccionMesActual * 0.10);
 
@@ -218,12 +217,12 @@ export default function Dashboard() {
     origen: '', destino: '', distanciaEstimadaKm: 0, vehiculoId: '', fecha: new Date().toISOString().split('T')[0]
   });
 
-  const cargarDatos = async () => {
+  const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
       const [resVehiculos, resRutas] = await Promise.all([
-        fetch(`${API_URL}/api/vehiculos`),
-        fetch(`${API_URL}/api/rutas`)
+        fetch(`${API_URL}/api/vehiculos`, { headers: getAuthHeaders() }),
+        fetch(`${API_URL}/api/rutas`, { headers: getAuthHeaders() })
       ]);
 
       if (resVehiculos.ok) {
@@ -242,15 +241,15 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getAuthHeaders]);
 
   useEffect(() => {
-    cargarDatos();
+    const userStr = localStorage.getItem("user");
+    if (userStr) { // Only load data if user is logged in
+      cargarDatos();
+    }
 
-    // Auto-refresh cada 3 segundos cuando estamos en la pestaña de tracking
-    // Esto permite detectar cuando un conductor se desconecta (el timestamp dejará de actualizarse)
     let intervalId: NodeJS.Timeout | null = null;
-
     if (activeTab === 'tracking') {
       intervalId = setInterval(() => {
         cargarDatos();
@@ -262,14 +261,14 @@ export default function Dashboard() {
         clearInterval(intervalId);
       }
     };
-  }, [activeTab]);
+  }, [activeTab, cargarDatos]);
 
   const handleCrearVehiculo = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const res = await fetch(`${API_URL}/api/vehiculos`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders() as any, // Cast to any to satisfy TS for now or define stricter HeadersInit
         body: JSON.stringify(nuevoVehiculo)
       });
       if (res.ok) {
@@ -289,7 +288,6 @@ export default function Dashboard() {
       toast.warning("⚠️ Debes asignar un vehículo a la ruta");
       return;
     }
-    // Geodoficación Real mediante Nominatim (OpenStreetMap)
     const geocode = async (query: string) => {
       try {
         const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
@@ -308,7 +306,6 @@ export default function Dashboard() {
         let originCoords = { lat: nuevaRuta.latitudOrigen, lng: nuevaRuta.longitudOrigen };
         let destCoords = { lat: nuevaRuta.latitudDestino, lng: nuevaRuta.longitudDestino };
 
-        // Si no se seleccionó sugerencia, buscar manualmente
         if (!originCoords.lat || !originCoords.lng) {
           const res = await geocode(nuevaRuta.origen || "");
           if (res) originCoords = res;
@@ -324,7 +321,7 @@ export default function Dashboard() {
 
         const res = await fetch(`${API_URL}/api/rutas`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders() as any,
           body: JSON.stringify({
             ...nuevaRuta,
             estado: 'PLANIFICADA',
@@ -358,7 +355,7 @@ export default function Dashboard() {
     try {
       await fetch(`${API_URL}/api/rutas/${ruta.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders() as any,
         body: JSON.stringify({ ...ruta, estado: nuevoEstado })
       }).catch(e => console.warn("Backend no respondió, usando estado local"));
 
@@ -366,7 +363,6 @@ export default function Dashboard() {
     } catch (error) {
       setRutas(rutasPrevias);
       toast.error("Error al actualizar estado");
-
     }
   };
 
@@ -375,7 +371,8 @@ export default function Dashboard() {
     setRutas(prev => prev.filter(r => r.id !== ruta.id));
 
     try {
-      await fetch(`${API_URL}/api/rutas/${ruta.id}`, { method: 'DELETE' }).catch(e => console.warn("Backend no respondió, usando estado local"));
+      await fetch(`${API_URL}/api/rutas/${ruta.id}`, { method: 'DELETE', headers: getAuthHeaders() as any })
+        .catch(e => console.warn("Backend no respondió, usando estado local"));
       toast.success("Ruta eliminada correctamente");
     } catch (error) {
       setRutas(rutasPrevias);
@@ -390,7 +387,7 @@ export default function Dashboard() {
         label: "Eliminar",
         onClick: async () => {
           try {
-            const res = await fetch(`${API_URL}/api/vehiculos/${id}`, { method: 'DELETE' });
+            const res = await fetch(`${API_URL}/api/vehiculos/${id}`, { method: 'DELETE', headers: getAuthHeaders() as any });
             if (res.ok) {
               toast.success("Vehículo eliminado correctamente");
               setVehiculos((prev) => prev.filter(v => v.id !== id));
@@ -798,237 +795,166 @@ export default function Dashboard() {
           )}
 
           {activeTab === 'estadisticas' && (
-            <div className={styles.rutasContainer}>
-              <div className={styles.grid} style={{ gridTemplateColumns: '1fr', marginBottom: '2rem' }}>
-                <div className={styles.card} style={{ background: 'linear-gradient(145deg, rgba(20,20,25,0.9), rgba(30,30,40,0.8))' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                    <h3 className={styles.cardTitle} style={{ fontSize: '1.5rem', color: '#fff' }}>Tendencias de Consumo</h3>
-                    <div className={styles.badge} style={{ backgroundColor: '#eab30833', color: '#f1dfb2ff' }}>
-                      Predicción Mes Actual: {prediccionMesActual}L
-                    </div>
+            <div className={styles.rutasContainer} style={{ gridTemplateColumns: "1fr", gap: "2rem" }}>
+              {/* Tarjetas Superiores de KPI */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.5rem" }}>
+                {/* KPI 1: Ahorro con IA */}
+                <div className={styles.card} style={{ position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: 0, right: 0, padding: "1rem", opacity: 0.1 }}>
+                    <svg width="60" height="60" fill="#22c55e" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z" /></svg>
                   </div>
+                  <h3 style={{ color: "#94a3b8", fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "1px" }}>Ahorro Potencial</h3>
+                  <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#fff", margin: "0.5rem 0" }}>
+                    {ahorroPotencial} L
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span style={{ color: "#22c55e", background: "rgba(34, 197, 94, 0.1)", padding: "2px 8px", borderRadius: "12px", fontSize: "0.8rem", fontWeight: "600" }}>+12% vs mes pasado</span>
+                  </div>
+                </div>
 
-                  <div style={{ width: '100%', height: 350 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={datosGrafico}>
-                        <defs>
-                          <linearGradient id="colorConsumo" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#444" vertical={false} />
-                        <XAxis dataKey="mes" stroke="#888" />
-                        <YAxis stroke="#888" />
-                        <Tooltip
-                          contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px' }}
-                          itemStyle={{ color: '#fff' }}
-                        />
-                        <Legend />
-                        <Area
-                          type="monotone"
-                          dataKey="consumo"
-                          stroke="var(--accent)"
-                          fillOpacity={1}
-                          fill="url(#colorConsumo)"
-                          name="Consumo Real (L)"
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="prediccion"
-                          stroke="#82ca9d"
-                          fillOpacity={0.1}
-                          fill="#82ca9d"
-                          name="Predicción (L)"
-                          strokeDasharray="5 5"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
+                {/* KPI 2: Eficiencia de Flota */}
+                <div className={styles.card}>
+                  <h3 style={{ color: "#94a3b8", fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "1px" }}>Eficiencia de Flota</h3>
+                  <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#fff", margin: "0.5rem 0" }}>94%</div>
+                  <span style={{ color: "var(--accent)", fontSize: "0.9rem" }}>Operativa óptima</span>
+                </div>
+
+                {/* KPI 3: Huella de Carbono */}
+                <div className={styles.card}>
+                  <h3 style={{ color: "#94a3b8", fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "1px" }}>Huella de Carbono</h3>
+                  <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#fff", margin: "0.5rem 0" }}>1.2T</div>
+                  <span style={{ color: "#60a5fa", fontSize: "0.9rem" }}>Reducción de CO2</span>
                 </div>
               </div>
 
-              <div className={styles.grid}>
-                <div className={styles.card}>
-                  <h4 className={styles.cardTitle}>Impacto Ambiental</h4>
-                  <p className={styles.subtitle} style={{ marginBottom: '1rem' }}>Emisiones de CO2 estimadas para este mes.</p>
-                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444' }}>
-                    {(prediccionMesActual * 2.3).toFixed(1)} <span style={{ fontSize: '1rem', color: '#888' }}>kg CO2</span>
-                  </div>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#888' }}>
-                    Basado en factor de emisión promedio de 2.3 kg CO2/L.
-                  </p>
+              {/* Gráfico Principal */}
+              <div className={styles.card} style={{ minHeight: "450px", display: "flex", flexDirection: "column" }}>
+                <div style={{ marginBottom: "2rem" }}>
+                  <h3 className={styles.cardTitle}>Análisis de Consumo y Predicciones IA</h3>
+                  <p style={{ color: "#64748b", fontSize: "0.9rem" }}>Datos en tiempo real vs. Tendencias históricas</p>
                 </div>
 
-                <div className={styles.card}>
-                  <h4 className={styles.cardTitle}>Oportunidad de Ahorro</h4>
-                  <p className={styles.subtitle} style={{ marginBottom: '1rem' }}>Si optimizas rutas este mes.</p>
-                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#22c55e' }}>
-                    {ahorroPotencial} <span style={{ fontSize: '1rem', color: '#888' }}>Litros</span>
-                  </div>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#888' }}>
-                    Reducción del 10% mediante conducción eficiente y rutas cortas.
-                  </p>
+                <div style={{ flex: 1, width: "100%", height: "100%", minHeight: "300px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={datosGrafico}>
+                      <defs>
+                        <linearGradient id="colorConsumo" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3bf63b" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#3bf63b" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="colorPrediccion" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                      <XAxis dataKey="mes" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}L`} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: "#1e293b", border: "none", borderRadius: "8px", boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.5)" }}
+                        itemStyle={{ color: "#e2e8f0" }}
+                      />
+                      <Legend verticalAlign="top" height={36} />
+                      <Area type="monotone" dataKey="consumo" name="Consumo Real (L)" stroke="#3bf63b" fillOpacity={1} fill="url(#colorConsumo)" strokeWidth={3} />
+                      <Area type="monotone" dataKey="prediccion" name="Predicción IA (L)" stroke="#8884d8" strokeDasharray="5 5" fillOpacity={0.4} fill="url(#colorPrediccion)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             </div>
           )}
 
           {activeTab === 'tracking' && (
-            <div className={styles.rutasContainer} style={{ gridTemplateColumns: '1fr' }}>
-              <div className={styles.card} style={{ padding: '0', overflow: 'hidden' }}>
-                <div style={{
-                  padding: '1.5rem',
-                  background: 'linear-gradient(135deg, rgba(59, 246, 59, 0.1), rgba(34, 197, 94, 0.05))',
-                  borderBottom: '1px solid rgba(59, 246, 59, 0.2)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.3rem', fontWeight: '800', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontSize: '1.5rem' }}>📍</span>
-                      Tracking de Conductores en Tiempo Real
-                    </h3>
-                    <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                      Visualiza la ubicación GPS de todos los conductores activos de la flota
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.5rem 1rem',
-                      background: 'rgba(59, 246, 59, 0.1)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(59, 246, 59, 0.3)'
-                    }}>
-                      <div style={{
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        backgroundColor: '#3bf63b',
-                        animation: 'pulse 2s infinite'
-                      }}></div>
-                      <span style={{ fontSize: '0.85rem', color: '#3bf63b', fontWeight: '700' }}>
-                        {rutas.filter(r => r.estado === 'EN_CURSO').length} conductores activos
-                      </span>
-                    </div>
-                    <button
-                      onClick={cargarDatos}
-                      className={styles.submitButton}
-                      style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}
-                    >
-                      🔄 Actualizar
-                    </button>
-                  </div>
-                </div>
+            <div className={styles.rutasContainer} style={{ gridTemplateColumns: '1fr', gap: '2rem' }}>
+              {/* Mapa Tracking Global */}
+              <div className={styles.card} style={{ height: '600px', padding: 0, overflow: 'hidden', position: 'relative', border: '1px solid rgba(59, 246, 59, 0.3)', boxShadow: '0 0 50px rgba(59, 246, 59, 0.1)' }}>
+                <MapTrackingGlobal
+                  rutas={rutas}
+                  activeTab={activeTab}
+                  onMarkerClick={(rutaId) => router.push(`/ruta/${rutaId}`)}
+                />
 
-                <div style={{ height: '550px', position: 'relative' }}>
-                  <MapTrackingGlobal
-                    rutasActivas={rutas.filter(r => r.estado === 'EN_CURSO' || r.estado === 'PLANIFICADA')}
-                    onRutaClick={(rutaId) => router.push(`/ruta/${rutaId}`)}
-                  />
+                <div style={{ position: 'absolute', top: '20px', right: '20px', background: 'rgba(0,0,0,0.8)', padding: '1rem', borderRadius: '12px', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)', zIndex: 1000 }}>
+                  <h3 style={{ fontSize: '0.9rem', color: '#fff', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 10px #22c55e' }}></span>
+                    En Vivo
+                  </h3>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--accent)' }}>
+                    {rutas.filter(r => r.estado === 'EN_CURSO').length}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#6b7280' }}>Vehículos en ruta</div>
                 </div>
               </div>
 
-              {/* Lista de rutas activas debajo del mapa */}
-              <div style={{ marginTop: '2rem' }}>
-                <h4 style={{ marginBottom: '1rem', color: '#9ca3af', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                  Rutas con Tracking Activo ({rutas.filter(r => r.estado === 'EN_CURSO').length})
-                </h4>
+              {/* Lista de Vehículos en Ruta */}
+              <div>
+                <h3 style={{ marginBottom: '1rem', color: '#fff' }}>Estado de la Flota Activa</h3>
                 <div className={styles.grid}>
-                  {rutas.filter(r => r.estado === 'EN_CURSO').map(ruta => {
-                    const hasActiveGPS = !!(ruta.latitudActual && ruta.longitudActual);
-                    const connectionStatus = getConnectionStatus(ruta.ultimaActualizacionGPS, hasActiveGPS);
+                  {rutas.filter(r => r.estado === 'EN_CURSO').map(r => {
+                    const status = getConnectionStatus(r.ultimaActualizacionGPS, !!(r.latitudActual && r.longitudActual));
 
                     return (
                       <div
-                        key={ruta.id}
+                        key={r.id}
                         className={styles.card}
-                        onClick={() => router.push(`/ruta/${ruta.id}`)}
-                        style={{
-                          cursor: 'pointer',
-                          borderLeft: `4px solid ${connectionStatus.color}`,
-                          background: 'linear-gradient(145deg, rgba(30,30,40,0.95), rgba(20,20,25,0.95))'
-                        }}
+                        onClick={() => router.push(`/ruta/${r.id}`)}
+                        style={{ cursor: 'pointer', borderLeft: `4px solid ${status.color}` }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <div style={{
-                              width: '10px',
-                              height: '10px',
-                              borderRadius: '50%',
-                              backgroundColor: connectionStatus.color,
-                              animation: connectionStatus.status === 'online' ? 'pulse 1.5s infinite' : 'none',
-                              boxShadow: connectionStatus.status === 'online' ? `0 0 10px ${connectionStatus.color}` : 'none'
-                            }}></div>
-                            <span style={{ fontSize: '0.75rem', color: connectionStatus.color, fontWeight: '700' }}>
-                              {connectionStatus.status === 'online' ? '🟢 ONLINE' :
-                                connectionStatus.status === 'idle' ? '🟡 INACTIVO' : '⚫ OFFLINE'}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                          <div>
+                            <h4 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '0.2rem' }}>{r.vehiculoId?.slice(-8) || 'Desconocido'}</h4>
+                            <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Ruta #{r.id?.slice(-6).toUpperCase()}</span>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '12px',
+                              background: `${status.color}20`,
+                              color: status.color,
+                              fontSize: '0.75rem',
+                              fontWeight: '700',
+                              border: `1px solid ${status.color}40`
+                            }}>
+                              {status.text.toUpperCase()}
                             </span>
                           </div>
-                          <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>
-                            #{ruta.id?.slice(-6).toUpperCase()}
+                        </div>
+
+                        <div className={styles.statRow}>
+                          <span className={styles.statLabel}>Ubicación Actual</span>
+                          <span className={styles.statValue} style={{ fontSize: '0.85rem' }}>
+                            {r.latitudActual?.toFixed(4)}, {r.longitudActual?.toFixed(4)}
                           </span>
                         </div>
 
-                        <h4 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.5rem' }}>
-                          {ruta.origen} → {ruta.destino}
-                        </h4>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#9ca3af' }}>
-                          <span>Vehículo: {ruta.vehiculoId?.slice(-6) || 'N/A'}</span>
-                          <span style={{ color: connectionStatus.color, fontWeight: '600' }}>
-                            📡 {connectionStatus.text}
+                        <div className={styles.statRow}>
+                          <span className={styles.statLabel}>Velocidad</span>
+                          <span className={styles.statValue} style={{ color: '#fff', fontWeight: 'bold' }}>
+                            0 km/h
                           </span>
                         </div>
 
-                        {ruta.latitudActual && ruta.longitudActual && (
-                          <div style={{
-                            marginTop: '0.5rem',
-                            fontSize: '0.7rem',
-                            color: connectionStatus.color,
-                            background: `${connectionStatus.color}15`,
-                            padding: '0.4rem 0.6rem',
-                            borderRadius: '6px',
-                            textAlign: 'center',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                          }}>
-                            <span>📍 {ruta.latitudActual.toFixed(4)}, {ruta.longitudActual.toFixed(4)}</span>
-                            {ruta.ultimaActualizacionGPS && (
-                              <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>
-                                🕐 {new Date(ruta.ultimaActualizacionGPS).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#6b7280' }}>
+                          <span>
+                            {status.status === 'online' ? '🟢 Transmitiendo datos' : (status.status === 'idle' ? '🟠 Conexión inestable' : '🔴 Sin conexión')}
+                          </span>
+                        </div>
                       </div>
-                    );
+                    )
                   })}
-
                   {rutas.filter(r => r.estado === 'EN_CURSO').length === 0 && (
-                    <div style={{
-                      gridColumn: '1 / -1',
-                      textAlign: 'center',
-                      padding: '3rem',
-                      color: '#6b7280'
-                    }}>
-                      <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>🚗</div>
-                      <p>No hay conductores activos en este momento</p>
-                      <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                        Los conductores aparecerán aquí cuando inicien una ruta
-                      </p>
+                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                      <p style={{ color: '#6b7280' }}>No hay vehículos activos en este momento.</p>
+                      <button onClick={() => setActiveTab('rutas')} style={{ marginTop: '1rem', background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }}>
+                        Planificar una ruta
+                      </button>
                     </div>
                   )}
                 </div>
               </div>
             </div>
           )}
-
         </div>
       </main>
     </BackgroundMeteors>

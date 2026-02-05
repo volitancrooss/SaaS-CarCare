@@ -5,5 +5,6 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import java.util.List;
 
 public interface MensajeRepository extends MongoRepository<Mensaje, String> {
+    List<Mensaje> findByUsuarioId(String usuarioId);
     List<Mensaje> findByRutaIdOrderByTimestampAsc(String rutaId);
 }

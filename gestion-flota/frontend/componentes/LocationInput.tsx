@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import styles from "../app/page.module.css";
+import styles from "../app/dashboard/page.module.css";
 
 interface Suggestion {
     display_name: string;

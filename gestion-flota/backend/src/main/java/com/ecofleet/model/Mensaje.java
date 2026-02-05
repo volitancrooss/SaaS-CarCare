@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 public class Mensaje {
     @Id
     private String id;
+    private String usuarioId; // ID del usuario/empresa propietaria
     private String rutaId;
     private String remitente; // "ADMIN" o "CONDUCTOR"
     private String contenido;

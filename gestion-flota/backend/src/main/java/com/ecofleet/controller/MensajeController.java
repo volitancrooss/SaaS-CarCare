@@ -9,6 +9,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/mensajes")
+@CrossOrigin(origins = "*")
 public class MensajeController {
 
     @Autowired
@@ -20,7 +21,10 @@ public class MensajeController {
     }
 
     @PostMapping
-    public Mensaje enviarMensaje(@RequestBody Mensaje mensaje) {
+    public Mensaje enviarMensaje(@RequestBody Mensaje mensaje, @RequestHeader(value = "X-User-Id", required = false) String usuarioId) {
+        if (usuarioId != null) {
+            mensaje.setUsuarioId(usuarioId);
+        }
         return mensajeRepository.save(mensaje);
     }
 }
