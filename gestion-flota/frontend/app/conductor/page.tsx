@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import BackgroundMeteors from "@/componentes/BackgroundMeteors";
-import styles from "../page.module.css";
+import styles from "../dashboard/page.module.css";
 import ChatRuta from "@/componentes/ChatRuta";
 
 interface Ruta {
@@ -27,6 +28,27 @@ export default function ConductorDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const router = useRouter(); // Import useRouter at top level if not already imported, otherwise add it inside component
+
+    // Helper to get auth headers
+    const getAuthHeaders = (): Record<string, string> => {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+        if (typeof window === 'undefined') return headers;
+
+        const userStr = localStorage.getItem("user");
+        if (!userStr) return headers;
+
+        try {
+            const user = JSON.parse(userStr);
+            if (user && user.id) {
+                headers['X-User-Id'] = String(user.id);
+            }
+        } catch (e) {
+            console.error("Error parsing user from localStorage", e);
+        }
+        return headers;
+    };
+
     const cargarRutas = async () => {
         try {
             setError(null);
@@ -44,9 +66,7 @@ export default function ConductorDashboard() {
             const res = await fetch(url, {
                 signal: controller.signal,
                 mode: 'cors',
-                headers: {
-                    'Accept': 'application/json'
-                }
+                headers: getAuthHeaders()
             });
             clearTimeout(timeoutId);
 
@@ -62,6 +82,11 @@ export default function ConductorDashboard() {
                 setRutas(data.filter((r: Ruta) => r.estado !== 'COMPLETADA'));
                 setLoading(false);
             } else {
+                if (res.status === 401 || res.status === 403) {
+                    toast.error("Sesión expirada");
+                    router.push("/login");
+                    return;
+                }
                 throw new Error(`Error del servidor: ${res.status} ${res.statusText}`);
             }
         } catch (err: any) {
@@ -81,6 +106,14 @@ export default function ConductorDashboard() {
     };
 
     useEffect(() => {
+        // Verificar autenticación
+        const userStr = localStorage.getItem("user");
+        if (!userStr) {
+            toast.error("Debes iniciar sesión para acceder al panel de conductor");
+            router.push("/login");
+            return;
+        }
+
         cargarRutas();
         const interval = setInterval(cargarRutas, 10000);
         return () => {
@@ -109,7 +142,7 @@ export default function ConductorDashboard() {
                 try {
                     await fetch(`${API_URL}/api/rutas/${rutaId}`, {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify({
                             latitudActual: position.coords.latitude,
                             longitudActual: position.coords.longitude
@@ -126,7 +159,7 @@ export default function ConductorDashboard() {
                         try {
                             await fetch(`${API_URL}/api/rutas/${rutaId}`, {
                                 method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: getAuthHeaders(),
                                 body: JSON.stringify({
                                     latitudActual: position.coords.latitude,
                                     longitudActual: position.coords.longitude
@@ -209,7 +242,7 @@ export default function ConductorDashboard() {
         try {
             await fetch(`${API_URL}/api/rutas/${ruta.id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify({ estado: nuevoEstado })
             });
             cargarRutas();

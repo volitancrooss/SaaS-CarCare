@@ -24,19 +24,22 @@ export default function ChatRuta({ rutaId, rol }: ChatProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Helper to get auth headers
-    const getAuthHeaders = () => {
-        if (typeof window === 'undefined') return { 'Content-Type': 'application/json' };
+    const getAuthHeaders = (): Record<string, string> => {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (typeof window === 'undefined') return headers;
+
         const userStr = localStorage.getItem("user");
-        if (!userStr) return { 'Content-Type': 'application/json' };
+        if (!userStr) return headers;
+
         try {
             const user = JSON.parse(userStr);
-            return {
-                'Content-Type': 'application/json',
-                'X-User-Id': user.id
-            };
+            if (user && user.id) {
+                headers['X-User-Id'] = String(user.id);
+            }
         } catch (e) {
-            return { 'Content-Type': 'application/json' };
+            console.error("Error parsing user from localStorage", e);
         }
+        return headers;
     };
 
     const cargarMensajes = async () => {

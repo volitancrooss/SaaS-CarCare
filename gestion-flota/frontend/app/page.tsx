@@ -101,7 +101,6 @@ const AndroidIcon = () => (
   </svg>
 );
 
-// Componente de partículas flotantes - renderizado solo en cliente
 const FloatingParticles = () => {
   const [particles, setParticles] = useState<Array<{ id: number; left: string; top: string; delay: string; duration: string }>>([]);
 

@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { toast } from "sonner";
 import BackgroundMeteors from "@/componentes/BackgroundMeteors";
-import styles from "../../page.module.css";
+import styles from "../../dashboard/page.module.css";
 import dynamic from "next/dynamic";
 import ChatRuta from "@/componentes/ChatRuta";
 
@@ -53,19 +53,22 @@ export default function RutaTracking() {
     const previousStateRef = useRef<string | undefined>(undefined);
 
     // Helper to get auth headers
-    const getAuthHeaders = useCallback(() => {
-        if (typeof window === 'undefined') return { 'Content-Type': 'application/json' };
+    const getAuthHeaders = useCallback((): Record<string, string> => {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (typeof window === 'undefined') return headers;
+
         const userStr = localStorage.getItem("user");
-        if (!userStr) return { 'Content-Type': 'application/json' };
+        if (!userStr) return headers;
+
         try {
             const user = JSON.parse(userStr);
-            return {
-                'Content-Type': 'application/json',
-                'X-User-Id': user.id
-            };
+            if (user && user.id) {
+                headers['X-User-Id'] = String(user.id);
+            }
         } catch (e) {
-            return { 'Content-Type': 'application/json' };
+            console.error("Error parsing user from localStorage", e);
         }
+        return headers;
     }, []);
 
     const calcularRutaDinamica = useCallback(async (currentLat: number, currentLng: number, destLat: number, destLng: number) => {

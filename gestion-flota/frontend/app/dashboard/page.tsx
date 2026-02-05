@@ -77,19 +77,22 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   // Helper to get auth headers
-  const getAuthHeaders = useCallback(() => {
-    if (typeof window === 'undefined') return { 'Content-Type': 'application/json' };
+  const getAuthHeaders = useCallback((): Record<string, string> => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (typeof window === 'undefined') return headers;
+
     const userStr = localStorage.getItem("user");
-    if (!userStr) return { 'Content-Type': 'application/json' };
+    if (!userStr) return headers;
+
     try {
       const user = JSON.parse(userStr);
-      return {
-        'Content-Type': 'application/json',
-        'X-User-Id': user.id // Assuming user object from login has 'id'
-      };
+      if (user && user.id) {
+        headers['X-User-Id'] = String(user.id);
+      }
     } catch (e) {
-      return { 'Content-Type': 'application/json' };
+      console.error("Error parsing user from localStorage", e);
     }
+    return headers;
   }, []);
 
   // Check auth
@@ -148,12 +151,12 @@ export default function Dashboard() {
 
     // DATOS DE PRUEBA TEMPORALES 
     const datosPrueba = [
-      { mes: 0, distancia: 550 },
+      { mes: 0, distancia: 20 },
       { mes: 1, distancia: 180 },
-      { mes: 2, distancia: 320 },
+      { mes: 2, distancia: 3520 },
       { mes: 3, distancia: 150 },
       { mes: 4, distancia: 980 },
-      { mes: 5, distancia: 200 },
+      { mes: 5, distancia: 5500 },
     ];
 
     datosPrueba.forEach(dato => {
@@ -422,24 +425,11 @@ export default function Dashboard() {
             <div className={styles.status}>
               <button
                 onClick={handleLogout}
+                className={styles.submitButton}
                 style={{
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  color: '#ef4444',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: '600',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
-                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
-                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                  width: 'auto',
+                  padding: '0.5rem 1.5rem',
+                  fontSize: '0.875rem'
                 }}
               >
                 Cerrar Sesión
@@ -869,9 +859,8 @@ export default function Dashboard() {
               {/* Mapa Tracking Global */}
               <div className={styles.card} style={{ height: '600px', padding: 0, overflow: 'hidden', position: 'relative', border: '1px solid rgba(59, 246, 59, 0.3)', boxShadow: '0 0 50px rgba(59, 246, 59, 0.1)' }}>
                 <MapTrackingGlobal
-                  rutas={rutas}
-                  activeTab={activeTab}
-                  onMarkerClick={(rutaId) => router.push(`/ruta/${rutaId}`)}
+                  rutasActivas={rutas}
+                  onRutaClick={(rutaId) => router.push(`/ruta/${rutaId}`)}
                 />
 
                 <div style={{ position: 'absolute', top: '20px', right: '20px', background: 'rgba(0,0,0,0.8)', padding: '1rem', borderRadius: '12px', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)', zIndex: 1000 }}>
