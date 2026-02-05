@@ -360,25 +360,7 @@ export default function RutaTracking() {
                                         ? '📱 DETENER TRACKING GPS ANDROID'
                                         : '📱 INICIAR TRACKING GPS ANDROID'}
                                 </button>
-                            ) : (
-                                <div style={{
-                                    padding: '1.2rem 1.5rem',
-                                    background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.2))',
-                                    border: '2px solid rgba(251, 191, 36, 0.5)',
-                                    borderRadius: '16px',
-                                    fontSize: '1rem',
-                                    color: '#f59e0b',
-                                    marginBottom: '1rem',
-                                    width: '100%',
-                                    fontWeight: '600',
-                                    textAlign: 'center'
-                                }}>
-                                    ⚠️ Dispositivo Android no detectado<br />
-                                    <span style={{ fontSize: '0.85rem', opacity: 0.8 }}>
-                                        Abre esta página en la app Android para tracking GPS
-                                    </span>
-                                </div>
-                            )}
+                            ) : null}
 
                             {/* Indicador GPS */}
                             {ruta?.latitudActual && ruta?.longitudActual && (

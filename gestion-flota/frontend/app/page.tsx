@@ -1,996 +1,576 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import styles from "./page.module.css";
-import BackgroundMeteors from "@/componentes/BackgroundMeteors";
-import LocationInput from "@/componentes/LocationInput";
-import dynamic from "next/dynamic";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  AreaChart,
-  Area
-} from "recharts";
+import styles from "./landing/landing.module.css";
 
-interface Vehiculo {
-  id: string;
-  matricula: string;
-  marca: string;
-  modelo: string;
-  kilometraje: number;
-  tipoCombustible: string;
-  combustibleActual: number;
-  activo: boolean;
-}
+// SVG Icons
+const CarIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.6-1.1-1-1.9-1H5c-.8 0-1.4.4-1.9 1L1 10l-.6 1c-.6.9-.4 2.1.5 2.6.2.1.5.2.8.2H3v1c0 .6.4 1 1 1h1" />
+    <circle cx="7" cy="17" r="2" />
+    <circle cx="17" cy="17" r="2" />
+  </svg>
+);
 
-interface Ruta {
-  id?: string;
-  origen: string;
-  destino: string;
-  distanciaEstimadaKm: number;
-  estado: string;
-  vehiculoId: string;
-  fecha: string;
-  latitudOrigen?: number;
-  longitudOrigen?: number;
-  latitudDestino?: number;
-  longitudDestino?: number;
-  latitudActual?: number;
-  longitudActual?: number;
-  ultimaActualizacionGPS?: string;
-}
+const LocationIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
 
-// Dynamic import para el mapa de tracking global (evitar SSR)
-const MapTrackingGlobal = dynamic(() => import("@/componentes/MapTrackingGlobal"), {
-  ssr: false,
-  loading: () => (
-    <div style={{
-      height: "500px",
-      background: "rgba(0,0,0,0.5)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: "16px",
-      color: "#888"
-    }}>
-      Cargando Mapa de Tracking...
-    </div>
-  )
-});
+const ChartIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 3v18h18" />
+    <path d="m19 9-5 5-4-4-3 3" />
+  </svg>
+);
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://saas-carcare-production.up.railway.app";
+const RouteIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="6" cy="19" r="3" />
+    <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+    <circle cx="18" cy="5" r="3" />
+  </svg>
+);
 
-export default function Dashboard() {
-  const router = useRouter();
+const MessageIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </svg>
+);
 
-  const [activeTab, setActiveTab] = useState<'flota' | 'nuevo' | 'rutas' | 'estadisticas' | 'tracking'>('flota');
-  const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
-  const [rutas, setRutas] = useState<Ruta[]>([]);
-  const [loading, setLoading] = useState(true);
+const LeafIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+    <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+  </svg>
+);
 
-  // Helper para calcular estado de conexión del conductor
-  // Si hay GPS activo pero no timestamp, significa que el conductor está online 
-  // (el timestamp se añadió después de que ya había datos)
-  const getConnectionStatus = (timestamp: string | undefined, hasActiveGPS: boolean = false) => {
-    // Si hay GPS activo pero no hay timestamp, consideramos que está online
-    if (!timestamp && hasActiveGPS) {
-      return { status: 'online' as const, text: 'GPS Activo', color: '#22c55e' };
-    }
+const SparklesIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+    <path d="M5 3v4" />
+    <path d="M19 17v4" />
+    <path d="M3 5h4" />
+    <path d="M17 19h4" />
+  </svg>
+);
 
-    if (!timestamp) return { status: 'offline' as const, text: 'Sin señal', color: '#6b7280' };
+const SmartphoneIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+    <path d="M12 18h.01" />
+  </svg>
+);
 
-    const now = new Date();
-    const lastUpdate = new Date(timestamp);
-    const diffSeconds = Math.floor((now.getTime() - lastUpdate.getTime()) / 1000);
+const ArrowRightIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12h14" />
+    <path d="m12 5 7 7-7 7" />
+  </svg>
+);
 
-    if (diffSeconds <= 30) {
-      return {
-        status: 'online' as const,
-        text: diffSeconds < 5 ? 'Ahora' : `Hace ${diffSeconds}s`,
-        color: '#22c55e'
-      };
-    } else if (diffSeconds <= 120) {
-      const mins = Math.floor(diffSeconds / 60);
-      return {
-        status: 'idle' as const,
-        text: mins > 0 ? `Hace ${mins}m ${diffSeconds % 60}s` : `Hace ${diffSeconds}s`,
-        color: '#f59e0b'
-      };
-    } else {
-      const mins = Math.floor(diffSeconds / 60);
-      return {
-        status: 'offline' as const,
-        text: mins < 60 ? `Hace ${mins} min` : `Hace ${Math.floor(mins / 60)}h`,
-        color: '#6b7280'
-      };
-    }
-  };
+const CheckIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
 
-  const datosGrafico = useMemo(() => {
-    const nombresMeses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const DownloadIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" x2="12" y1="15" y2="3" />
+  </svg>
+);
 
-    const consumoRealPorMes = new Array(12).fill(0);
+const PackageIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16.5 9.4 7.55 4.24" />
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+    <polyline points="3.29 7 12 12 20.71 7" />
+    <line x1="12" x2="12" y1="22" y2="12" />
+  </svg>
+);
 
-    // DATOS DE PRUEBA TEMPORALES (eliminar cuando tengas rutas reales)
-    const datosPrueba = [
-      { mes: 0, distancia: 550 }, // Enero: 250km = 20L
-      { mes: 1, distancia: 180 }, // Febrero: 180km = 14.4L  
-      { mes: 2, distancia: 320 }, // Marzo: 320km = 25.6L
-      { mes: 3, distancia: 150 }, // Abril: 150km = 12L
-      { mes: 4, distancia: 980 }, // Mayo: 280km = 22.4L
-      { mes: 5, distancia: 200 }, // Junio: 200km = 16L
-    ];
+const AndroidIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M17.523 15.34c-.5 0-.908-.406-.908-.907s.408-.907.908-.907c.502 0 .907.405.907.907 0 .502-.405.907-.907.907m-11.046 0c-.503 0-.908-.406-.908-.907s.405-.907.908-.907c.5 0 .907.405.907.907 0 .502-.407.907-.907.907M17.97 6.88l1.97-3.415c.11-.19.045-.434-.145-.544-.19-.11-.434-.045-.543.145L17.25 6.553c-1.543-.7-3.285-1.093-5.25-1.093s-3.707.393-5.25 1.093L4.748 3.066c-.11-.19-.354-.255-.543-.145-.19.11-.256.354-.145.544L6.03 6.88C2.57 8.55.27 11.945.07 16h23.86c-.2-4.055-2.5-7.45-5.96-9.12" />
+  </svg>
+);
 
-    datosPrueba.forEach(dato => {
-      const consumoEstimado = (dato.distancia / 100) * 8;
-      consumoRealPorMes[dato.mes] += consumoEstimado;
-    });
-
-    rutas.forEach(r => {
-      if (!r.fecha || r.estado !== 'COMPLETADA') return;
-      const d = new Date(r.fecha);
-      const mesIndex = d.getMonth();
-      const consumoEstimado = (r.distanciaEstimadaKm / 100) * 8;
-      consumoRealPorMes[mesIndex] += consumoEstimado;
-    });
-
-    // 2. Calcular Predicciones (Media móvil de los últimos 3 meses) y construir array final
-    return nombresMeses.map((mes, index) => {
-      const consumoReal = Math.round(consumoRealPorMes[index]);
-
-      // Calcular predicción basada en el promedio de hasta 3 meses anteriores
-      let suma = 0;
-      let conteo = 0;
-      for (let i = 1; i <= 3; i++) {
-        const idxAnterior = index - i;
-        if (idxAnterior >= 0) {
-          suma += consumoRealPorMes[idxAnterior];
-          conteo++;
-        }
-      }
-      let prediccionCalculada = 0;
-
-      if (conteo > 0) {
-        prediccionCalculada = suma / conteo;
-      }
-
-      // Proyección inteligente para el mes actual
-      const fechaActual = new Date();
-      if (index === fechaActual.getMonth()) {
-        const diaActual = fechaActual.getDate();
-        const diasEnMes = new Date(fechaActual.getFullYear(), fechaActual.getMonth() + 1, 0).getDate();
-        // Proyectamos el consumo actual al final del mes
-        const proyeccion = (consumoReal / Math.max(1, diaActual)) * diasEnMes;
-        // Usamos la proyección si es más relevante (ej. sin histórico o proyección alta)
-        if (conteo === 0 || proyeccion > prediccionCalculada) {
-          prediccionCalculada = proyeccion;
-        }
-      } else if (conteo === 0) {
-        prediccionCalculada = consumoReal || 0;
-      }
-
-      return {
-        mes,
-        consumo: consumoReal,
-        prediccion: Math.round(prediccionCalculada)
-      };
-    });
-  }, [rutas]);
-
-  // Buscamos el primer mes con valor 0 (que se asume como el "actual" o pendiente)
-  // Si todos tienen datos, usamos el mes del sistema.
-  const indexMesCero = datosGrafico.findIndex(d => d.consumo === 0);
-  const indexFinal = indexMesCero !== -1 ? indexMesCero : new Date().getMonth();
-
-  const datosMesActual = datosGrafico[indexFinal] || { consumo: 0, prediccion: 0 };
-
-  const prediccionMesActual = datosMesActual.prediccion;
-  const ahorroPotencial = Math.round(prediccionMesActual * 0.10);
-
-  const [nuevoVehiculo, setNuevoVehiculo] = useState<Partial<Vehiculo>>({
-    marca: '', modelo: '', matricula: '', kilometraje: 0, combustibleActual: 50, activo: true
-  });
-  const [nuevaRuta, setNuevaRuta] = useState<Partial<Ruta>>({
-    origen: '', destino: '', distanciaEstimadaKm: 0, vehiculoId: '', fecha: new Date().toISOString().split('T')[0]
-  });
-
-  const cargarDatos = async () => {
-    setLoading(true);
-    try {
-      const [resVehiculos, resRutas] = await Promise.all([
-        fetch(`${API_URL}/api/vehiculos`),
-        fetch(`${API_URL}/api/rutas`)
-      ]);
-
-      if (resVehiculos.ok) {
-        const dataV = await resVehiculos.json();
-        setVehiculos(dataV);
-      } else {
-        console.error("Error fetching vehicles");
-      }
-
-      if (resRutas.ok) {
-        const dataR = await resRutas.json();
-        setRutas(dataR);
-      }
-    } catch (err) {
-      console.error("Error conectando con el Backend:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+// Componente de partículas flotantes - renderizado solo en cliente
+const FloatingParticles = () => {
+  const [particles, setParticles] = useState<Array<{ id: number; left: string; top: string; delay: string; duration: string }>>([]);
 
   useEffect(() => {
-    cargarDatos();
+    // Generar partículas solo en el cliente para evitar hydration mismatch
+    const newParticles = [...Array(50)].map((_, i) => ({
+      id: i,
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      delay: `${Math.random() * 5}s`,
+      duration: `${3 + Math.random() * 4}s`,
+    }));
+    setParticles(newParticles);
+  }, []);
 
-    // Auto-refresh cada 3 segundos cuando estamos en la pestaña de tracking
-    // Esto permite detectar cuando un conductor se desconecta (el timestamp dejará de actualizarse)
-    let intervalId: NodeJS.Timeout | null = null;
-
-    if (activeTab === 'tracking') {
-      intervalId = setInterval(() => {
-        cargarDatos();
-      }, 3000);
-    }
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [activeTab]);
-
-  const handleCrearVehiculo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`${API_URL}/api/vehiculos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nuevoVehiculo)
-      });
-      if (res.ok) {
-        toast.success("Vehículo añadido a la flota correctamente");
-        setActiveTab('flota');
-        cargarDatos();
-        setNuevoVehiculo({ marca: '', modelo: '', matricula: '', kilometraje: 0, combustibleActual: 50, activo: true });
-      }
-    } catch (error) {
-      toast.error("Error al crear vehículo");
-    }
-  };
-
-  const handleCrearRuta = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nuevaRuta.vehiculoId) {
-      toast.warning("⚠️ Debes asignar un vehículo a la ruta");
-      return;
-    }
-    // Geodoficación Real mediante Nominatim (OpenStreetMap)
-    const geocode = async (query: string) => {
-      try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
-        const data = await response.json();
-        if (data && data.length > 0) {
-          return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-        }
-      } catch (error) {
-        console.error("Error en geocodificación:", error);
-      }
-      return null;
-    };
-
-    toast.promise(
-      (async () => {
-        let originCoords = { lat: nuevaRuta.latitudOrigen, lng: nuevaRuta.longitudOrigen };
-        let destCoords = { lat: nuevaRuta.latitudDestino, lng: nuevaRuta.longitudDestino };
-
-        // Si no se seleccionó sugerencia, buscar manualmente
-        if (!originCoords.lat || !originCoords.lng) {
-          const res = await geocode(nuevaRuta.origen || "");
-          if (res) originCoords = res;
-        }
-        if (!destCoords.lat || !destCoords.lng) {
-          const res = await geocode(nuevaRuta.destino || "");
-          if (res) destCoords = res;
-        }
-
-        if (!originCoords.lat || !destCoords.lat) {
-          throw new Error("No se pudo localizar el origen o el destino. Por favor, selecciona una sugerencia.");
-        }
-
-        const res = await fetch(`${API_URL}/api/rutas`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...nuevaRuta,
-            estado: 'PLANIFICADA',
-            latitudOrigen: originCoords.lat,
-            longitudOrigen: originCoords.lng,
-            latitudDestino: destCoords.lat,
-            longitudDestino: destCoords.lng,
-            latitudActual: originCoords.lat,
-            longitudActual: originCoords.lng
-          })
-        });
-
-        if (!res.ok) throw new Error("Error al guardar la ruta en el servidor");
-
-        cargarDatos();
-        setNuevaRuta({ origen: "", destino: "", distanciaEstimadaKm: 0, fecha: new Date().toISOString().split("T")[0], vehiculoId: "" });
-        return res.json();
-      })(),
-      {
-        loading: 'Procesando ubicaciones...',
-        success: 'Ruta planificada con éxito con coordenadas precisas',
-        error: (err) => `Error: ${err.message}`,
-      }
-    );
-  };
-
-  const handleCambioEstadoRuta = async (ruta: Ruta, nuevoEstado: string) => {
-    const rutasPrevias = [...rutas];
-    setRutas(prev => prev.map(r => r.id === ruta.id ? { ...r, estado: nuevoEstado } : r));
-
-    try {
-      await fetch(`${API_URL}/api/rutas/${ruta.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...ruta, estado: nuevoEstado })
-      }).catch(e => console.warn("Backend no respondió, usando estado local"));
-
-      toast.success(`Ruta marcada como ${nuevoEstado}`);
-    } catch (error) {
-      setRutas(rutasPrevias);
-      toast.error("Error al actualizar estado");
-
-    }
-  };
-
-  const handleEliminarRuta = async (ruta: Ruta) => {
-    const rutasPrevias = [...rutas];
-    setRutas(prev => prev.filter(r => r.id !== ruta.id));
-
-    try {
-      await fetch(`${API_URL}/api/rutas/${ruta.id}`, { method: 'DELETE' }).catch(e => console.warn("Backend no respondió, usando estado local"));
-      toast.success("Ruta eliminada correctamente");
-    } catch (error) {
-      setRutas(rutasPrevias);
-      toast.error("Error al eliminar ruta");
-    }
-  };
-
-  const handleEliminarVehiculo = (id: string) => {
-    toast("¿Estás seguro?", {
-      description: "Esta acción eliminará el vehículo permanentemente de la flota.",
-      action: {
-        label: "Eliminar",
-        onClick: async () => {
-          try {
-            const res = await fetch(`${API_URL}/api/vehiculos/${id}`, { method: 'DELETE' });
-            if (res.ok) {
-              toast.success("Vehículo eliminado correctamente");
-              setVehiculos((prev) => prev.filter(v => v.id !== id));
-            }
-          } catch (error) {
-            toast.error("Error al eliminar vehículo");
-          }
-        }
-      },
-      cancel: {
-        label: "Cancelar",
-        onClick: () => console.log("Cancelado"),
-      },
-    });
-  };
-
-  const getFuelColor = (level: number) => {
-    if (level > 50) return '#22c55e';
-    if (level > 20) return '#eab308';
-    return '#ef4444';
-  };
+  if (particles.length === 0) return null;
 
   return (
-    <BackgroundMeteors>
-      <main style={{ height: '100%', width: '100%', overflowY: 'auto', position: 'relative', zIndex: 20, paddingBottom: '100px' }}>
-        <div className={styles.container}>
-          <header className={styles.header}>
-            <div className={styles.title}>
-              <h1>./CarCare Tracker</h1>
-              <p className={styles.subtitle}>Gestion de Flota de mano de CarCare Tracker para la Organización y Sostenibilidad de la flota de coches de una empresa</p>
-            </div>
-            <div className={styles.status}>
-            </div>
-          </header>
+    <div className={styles.particles}>
+      {particles.map((p) => (
+        <div
+          key={p.id}
+          className={styles.particle}
+          style={{
+            left: p.left,
+            top: p.top,
+            animationDelay: p.delay,
+            animationDuration: p.duration,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
 
-          <nav className={styles.nav}>
+// Componente de fondo con gradiente animado
+const AnimatedBackground = () => {
+  return (
+    <div className={styles.animatedBg}>
+      <div className={styles.gradientOrb1} />
+      <div className={styles.gradientOrb2} />
+      <div className={styles.gradientOrb3} />
+      <div className={styles.gridOverlay} />
+    </div>
+  );
+};
+
+export default function LandingPage() {
+  const router = useRouter();
+  const [isVisible, setIsVisible] = useState(false);
+  const [activeFeature, setActiveFeature] = useState(0);
+  const [scrollY, setScrollY] = useState(0);
+
+  useEffect(() => {
+    setIsVisible(true);
+
+    const handleScroll = () => {
+      setScrollY(window.scrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Rotación automática de features
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveFeature((prev) => (prev + 1) % features.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const features = [
+    {
+      icon: <CarIcon />,
+      title: "Gestión de Flota",
+      description: "Controla todos tus vehículos desde un solo panel. Monitoriza kilometraje, combustible y estado en tiempo real.",
+      color: "#22c55e"
+    },
+    {
+      icon: <LocationIcon />,
+      title: "Tracking GPS en Vivo",
+      description: "Rastrea la ubicación exacta de tus conductores en tiempo real con actualizaciones cada 3 segundos.",
+      color: "#3bf63b"
+    },
+    {
+      icon: <ChartIcon />,
+      title: "Analíticas Avanzadas",
+      description: "Predicciones de consumo, tendencias mensuales y recomendaciones para optimizar costes.",
+      color: "#0ee936"
+    },
+    {
+      icon: <RouteIcon />,
+      title: "Planificación de Rutas",
+      description: "Crea y gestiona rutas con geocodificación automática. Visualiza origen, destino y progreso.",
+      color: "#04e13f"
+    },
+    {
+      icon: <MessageIcon />,
+      title: "Chat en Tiempo Real",
+      description: "Comunicación directa con los conductores desde la app móvil y el panel web.",
+      color: "#25eb7b"
+    },
+    {
+      icon: <LeafIcon />,
+      title: "Eco-Friendly",
+      description: "Métricas de sostenibilidad y ahorro de combustible para reducir tu huella de carbono.",
+      color: "#22c55e"
+    }
+  ];
+
+  const stats = [
+    { number: "99.9%", label: "Uptime Garantizado" },
+    { number: "3s", label: "Actualización GPS" },
+    { number: "50+", label: "Flotas Gestionadas" },
+    { number: "24/7", label: "Soporte Técnico" }
+  ];
+
+  return (
+    <main className={styles.main}>
+      <AnimatedBackground />
+      <FloatingParticles />
+
+      {/* Navigation */}
+      <nav className={styles.navbar}>
+        <div className={styles.navContent}>
+          <div className={styles.logo}>
+            <span className={styles.logoIcon}><CarIcon /></span>
+            <span className={styles.logoText}>./CarCare Tracker</span>
+          </div>
+          <div className={styles.navLinks}>
+            <a href="#features" className={styles.navLink}>Características</a>
+            <a href="#how-it-works" className={styles.navLink}>Cómo Funciona</a>
+            <a href="#download" className={styles.navLink}>Descargar</a>
             <button
-              className={`${styles.navButton} ${activeTab === 'flota' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('flota')}
+              className={styles.navCta}
+              onClick={() => router.push('/login')}
             >
-              Flota de coches
+              Iniciar Sesión
             </button>
-            <button
-              className={`${styles.navButton} ${activeTab === 'rutas' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('rutas')}
-            >
-              Rutas y Logística
-            </button>
-            <button
-              className={`${styles.navButton} ${activeTab === 'estadisticas' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('estadisticas')}
-            >
-              Estadísticas
-            </button>
-            <button
-              className={`${styles.navButton} ${activeTab === 'tracking' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('tracking')}
-              style={{
-                background: activeTab === 'tracking' ? 'linear-gradient(135deg, rgba(59, 246, 59, 0.2), rgba(34, 197, 94, 0.2))' : undefined,
-                border: activeTab === 'tracking' ? '1px solid rgba(59, 246, 59, 0.5)' : undefined
-              }}
-            >
-              📍 Tracking en Vivo
-            </button>
-            <button
-              className={`${styles.navButton} ${activeTab === 'nuevo' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('nuevo')}
-            >
-              + Nuevo Vehículo
-            </button>
-          </nav>
-
-          {activeTab === 'flota' && (
-            <div className={styles.grid}>
-              {vehiculos.map((v) => (
-                <div
-                  key={v.id}
-                  className={styles.card}
-                  onClick={() => router.push(`/vehiculo/${v.id}`)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className={styles.cardHeader}>
-                    <div>
-                      <h2 className={styles.cardTitle}>{v.marca} {v.modelo}</h2>
-                      <span className={styles.cardSubtitle}>Matrícula: {v.matricula}</span>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEliminarVehiculo(v.id);
-                      }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1.2rem' }}
-                      title="Eliminar Vehículo"
-                    >
-                      X
-                    </button>
-                  </div>
-
-                  <div className={styles.statRow}>
-                    <span className={styles.statLabel}>Kilometraje total</span>
-                    <span className={styles.statValue}>{v.kilometraje.toLocaleString()} km</span>
-                  </div>
-
-                  <div className={styles.statRow}>
-                    <span className={styles.statLabel}>Tipo de combustible</span>
-                    <span className={styles.statValue}>{v.tipoCombustible}</span>
-                  </div>
-
-                  <div className={styles.statRow}>
-                    <span className={styles.statLabel}>Combustible</span>
-                    <span className={styles.statValue}>{v.combustibleActual} L</span>
-                  </div>
-
-                  <div className={styles.fuelBarBg}>
-                    <div
-                      className={styles.fuelBarFill}
-                      style={{
-                        width: `${Math.min(v.combustibleActual, 100)}%`,
-                        backgroundColor: getFuelColor(v.combustibleActual)
-                      }}
-                    />
-                  </div>
-                  <div style={{ marginTop: '1rem' }}>
-                    {(() => {
-                      const estaOcupado = rutas.some(r => r.vehiculoId === v.id && r.estado !== 'COMPLETADA');
-                      return (
-                        <span
-                          className={styles.badge}
-                          style={{
-                            backgroundColor: !v.activo ? 'rgba(239, 68, 68, 0.2)' : (estaOcupado ? 'rgba(234, 179, 8, 0.2)' : 'rgba(34, 197, 94, 0.2)'),
-                            color: !v.activo ? '#f87171' : (estaOcupado ? '#facc15' : '#03f844'),
-                            boxShadow: !v.activo ? 'none' : (estaOcupado ? '0 0 10px rgba(234, 179, 8, 0.2)' : '0 0 10px rgba(34, 197, 94, 0.2)'),
-                          }}
-                        >
-                          {!v.activo ? "TALLER" : (estaOcupado ? "OCUPADO" : "ACTIVO")}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                </div>
-              ))}
-              {vehiculos.length === 0 && !loading && <p>No hay vehículos registrados.</p>}
-            </div>
-          )}
-
-          {activeTab === 'nuevo' && (
-            <div className={styles.formContainer}>
-              <h2 style={{ marginBottom: '1.5rem' }}>Dar de alta nuevo vehículo</h2>
-              <form onSubmit={handleCrearVehiculo}>
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Marca</label>
-                  <input className={styles.input} type="text" placeholder="Ej: Toyota" required
-                    value={nuevoVehiculo.marca} onChange={e => setNuevoVehiculo({ ...nuevoVehiculo, marca: e.target.value })} />
-                </div>
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Modelo</label>
-                  <input className={styles.input} type="text" placeholder="Ej: Prius" required
-                    value={nuevoVehiculo.modelo} onChange={e => setNuevoVehiculo({ ...nuevoVehiculo, modelo: e.target.value })} />
-                </div>
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Matrícula</label>
-                  <input className={styles.input} type="text" placeholder="1234-XYZ" required
-                    value={nuevoVehiculo.matricula} onChange={e => setNuevoVehiculo({ ...nuevoVehiculo, matricula: e.target.value })} />
-                </div>
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <label className={styles.label} style={{ marginBottom: 0 }}>Km Iniciales</label>
-                      <span style={{ fontWeight: 'bold', color: 'var(--accent)' }}>{nuevoVehiculo.kilometraje?.toLocaleString()} km</span>
-                    </div>
-                    <input
-                      className={styles.input}
-                      type="range"
-                      min="0"
-                      max="1000000"
-                      step="500"
-                      style={{ padding: '0.5rem', cursor: 'pointer' }}
-                      value={nuevoVehiculo.kilometraje}
-                      onChange={e => setNuevoVehiculo({ ...nuevoVehiculo, kilometraje: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <label className={styles.label} style={{ marginBottom: 0 }}>Combustible</label>
-                      <span style={{ fontWeight: 'bold', color: getFuelColor(nuevoVehiculo.combustibleActual || 0) }}>
-                        {nuevoVehiculo.combustibleActual}%
-                      </span>
-                    </div>
-                    <input
-                      className={styles.input}
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      style={{ padding: '0.5rem', cursor: 'pointer' }}
-                      value={nuevoVehiculo.combustibleActual}
-                      onChange={e => setNuevoVehiculo({ ...nuevoVehiculo, combustibleActual: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Tipo de combustible</label>
-                    <select className={styles.select} required
-                      value={nuevoVehiculo.tipoCombustible} onChange={e => setNuevoVehiculo({ ...nuevoVehiculo, tipoCombustible: e.target.value })}>
-                      <option value="">Seleccionar Combustible</option>
-                      <option value="gasolina">Gasolina</option>
-                      <option value="diesel">Diesel</option>
-                      <option value="hibrido">Híbrido</option>
-                      <option value="electrico">Eléctrico</option>
-                    </select>
-                  </div>
-                </div>
-                <button type="submit" className={styles.submitButton}>Guardar Vehículo</button>
-              </form>
-            </div>
-          )}
-
-          {activeTab === 'rutas' && (
-            <div className={styles.rutasContainer}>
-              <div className={styles.formContainer}>
-                <h3 style={{ marginBottom: '1rem', color: 'var(--accent)' }}>Nueva Ruta</h3>
-                <form onSubmit={handleCrearRuta}>
-                  <LocationInput
-                    label="Origen"
-                    placeholder="Ej: Madrid, Calle Mayor..."
-                    value={nuevaRuta.origen || ""}
-                    onChange={(val, coords) => setNuevaRuta({
-                      ...nuevaRuta,
-                      origen: val,
-                      latitudOrigen: coords?.lat,
-                      longitudOrigen: coords?.lng
-                    })}
-                  />
-
-                  <LocationInput
-                    label="Destino"
-                    placeholder="Ej: Barcelona, Puerto..."
-                    value={nuevaRuta.destino || ""}
-                    onChange={(val, coords) => setNuevaRuta({
-                      ...nuevaRuta,
-                      destino: val,
-                      latitudDestino: coords?.lat,
-                      longitudDestino: coords?.lng
-                    })}
-                  />
-                  <div className={styles.formGroup}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <label className={styles.label} style={{ marginBottom: 0 }}>Distancia Estimada</label>
-                      <span style={{ fontWeight: 'bold', color: 'green' }}>{nuevaRuta.distanciaEstimadaKm?.toLocaleString() || 0} km</span>
-                    </div>
-                    <input
-                      className={styles.input}
-                      type="range"
-                      min="0"
-                      max="2000"
-                      step="1"
-                      style={{ padding: '0.5rem', cursor: 'pointer' }}
-                      value={nuevaRuta.distanciaEstimadaKm || 0}
-                      onChange={e => setNuevaRuta({ ...nuevaRuta, distanciaEstimadaKm: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Fecha Salida</label>
-                    <input className={styles.input} type="date" required
-                      value={nuevaRuta.fecha} onChange={e => setNuevaRuta({ ...nuevaRuta, fecha: e.target.value })} />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Vehículo Asignado</label>
-                    <select className={styles.select} required
-                      value={nuevaRuta.vehiculoId} onChange={e => setNuevaRuta({ ...nuevaRuta, vehiculoId: e.target.value })}>
-                      <option value="">-- Seleccionar Vehículo --</option>
-                      {vehiculos.map(v => (
-                        <option key={v.id} value={v.id}>{v.marca} {v.modelo} ({v.matricula})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button type="submit" className={styles.submitButton}>Planificar Ruta</button>
-                </form>
-              </div>
-
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3>Rutas Activas</h3>
-                  <button
-                    onClick={cargarDatos}
-                    className={styles.submitButton}
-                    style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
-                    title="Recargar rutas"
-                  >
-                    🔄 Recargar
-                  </button>
-                </div>
-                <div className={styles.grid}>
-                  {rutas.map(r => {
-                    const esEnCurso = r.estado === 'EN_CURSO';
-                    const esCompletada = r.estado === 'COMPLETADA';
-
-                    return (
-                      <div
-                        key={r.id}
-                        className={styles.card}
-                        onClick={() => router.push(`/ruta/${r.id}`)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <div className={styles.cardHeader}>
-                          <div>
-                            <h2 className={styles.cardTitle}>{r.origen} → {r.destino}</h2>
-                            <span className={styles.cardSubtitle}>#{r.id?.slice(-6).toUpperCase()} • {r.fecha}</span>
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEliminarRuta(r);
-                            }}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1.2rem' }}
-                            title="Eliminar Ruta"
-                          >
-                            X
-                          </button>
-                        </div>
-
-                        <div className={styles.statRow}>
-                          <span className={styles.statLabel}>Distancia total</span>
-                          <span className={styles.statValue}>{r.distanciaEstimadaKm} km</span>
-                        </div>
-
-                        <div className={styles.statRow}>
-                          <span className={styles.statLabel}>Vehículo asignado</span>
-                          <span className={styles.statValue}>
-                            {r.vehiculoId?.length > 10 ? `...${r.vehiculoId.slice(-8)}` : r.vehiculoId}
-                          </span>
-                        </div>
-
-                        <div className={styles.statRow}>
-                          <span className={styles.statLabel}>Estado</span>
-                          <span className={styles.statValue}>{r.estado}</span>
-                        </div>
-
-                        <div className={styles.fuelBarBg}>
-                          <div
-                            className={styles.fuelBarFill}
-                            style={{
-                              width: esCompletada ? '100%' : (esEnCurso ? '60%' : '30%'),
-                              backgroundColor: esCompletada ? '#22c55e' : (esEnCurso ? '#06b6d4' : '#6b7280')
-                            }}
-                          />
-                        </div>
-
-                        {esEnCurso && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '0.5rem' }}>
-                            <span style={{
-                              width: '8px',
-                              height: '8px',
-                              borderRadius: '50%',
-                              backgroundColor: '#3bf63b',
-                              boxShadow: '0 0 10px #3bf63b',
-                              animation: 'pulse 1.5s infinite'
-                            }}></span>
-                            <span style={{ fontSize: '0.7rem', color: '#3bf63b', fontWeight: '800', letterSpacing: '0.05em' }}>RASTREO ACTIVO</span>
-                          </div>
-                        )}
-
-                        <div style={{ marginTop: '1rem' }}>
-                          <span
-                            className={styles.badge}
-                            style={{
-                              backgroundColor: esCompletada ? 'rgba(34, 197, 94, 0.2)' : (esEnCurso ? 'rgba(6, 182, 212, 0.2)' : 'rgba(107, 114, 128, 0.2)'),
-                              color: esCompletada ? '#4ade80' : (esEnCurso ? '#22d3ee' : '#9ca3af'),
-                              boxShadow: esCompletada ? '0 0 10px rgba(34, 197, 94, 0.2)' : (esEnCurso ? '0 0 10px rgba(6, 182, 212, 0.2)' : 'none'),
-                            }}
-                          >
-                            {esCompletada ? "COMPLETADA" : (esEnCurso ? "EN CURSO" : "PLANIFICADA")}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {rutas.length === 0 && <p>No hay rutas planificadas.</p>}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'estadisticas' && (
-            <div className={styles.rutasContainer}>
-              <div className={styles.grid} style={{ gridTemplateColumns: '1fr', marginBottom: '2rem' }}>
-                <div className={styles.card} style={{ background: 'linear-gradient(145deg, rgba(20,20,25,0.9), rgba(30,30,40,0.8))' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                    <h3 className={styles.cardTitle} style={{ fontSize: '1.5rem', color: '#fff' }}>Tendencias de Consumo</h3>
-                    <div className={styles.badge} style={{ backgroundColor: '#eab30833', color: '#f1dfb2ff' }}>
-                      Predicción Mes Actual: {prediccionMesActual}L
-                    </div>
-                  </div>
-
-                  <div style={{ width: '100%', height: 350 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={datosGrafico}>
-                        <defs>
-                          <linearGradient id="colorConsumo" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#444" vertical={false} />
-                        <XAxis dataKey="mes" stroke="#888" />
-                        <YAxis stroke="#888" />
-                        <Tooltip
-                          contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px' }}
-                          itemStyle={{ color: '#fff' }}
-                        />
-                        <Legend />
-                        <Area
-                          type="monotone"
-                          dataKey="consumo"
-                          stroke="var(--accent)"
-                          fillOpacity={1}
-                          fill="url(#colorConsumo)"
-                          name="Consumo Real (L)"
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="prediccion"
-                          stroke="#82ca9d"
-                          fillOpacity={0.1}
-                          fill="#82ca9d"
-                          name="Predicción (L)"
-                          strokeDasharray="5 5"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-
-              <div className={styles.grid}>
-                <div className={styles.card}>
-                  <h4 className={styles.cardTitle}>Impacto Ambiental</h4>
-                  <p className={styles.subtitle} style={{ marginBottom: '1rem' }}>Emisiones de CO2 estimadas para este mes.</p>
-                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444' }}>
-                    {(prediccionMesActual * 2.3).toFixed(1)} <span style={{ fontSize: '1rem', color: '#888' }}>kg CO2</span>
-                  </div>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#888' }}>
-                    Basado en factor de emisión promedio de 2.3 kg CO2/L.
-                  </p>
-                </div>
-
-                <div className={styles.card}>
-                  <h4 className={styles.cardTitle}>Oportunidad de Ahorro</h4>
-                  <p className={styles.subtitle} style={{ marginBottom: '1rem' }}>Si optimizas rutas este mes.</p>
-                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#22c55e' }}>
-                    {ahorroPotencial} <span style={{ fontSize: '1rem', color: '#888' }}>Litros</span>
-                  </div>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#888' }}>
-                    Reducción del 10% mediante conducción eficiente y rutas cortas.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'tracking' && (
-            <div className={styles.rutasContainer} style={{ gridTemplateColumns: '1fr' }}>
-              <div className={styles.card} style={{ padding: '0', overflow: 'hidden' }}>
-                <div style={{
-                  padding: '1.5rem',
-                  background: 'linear-gradient(135deg, rgba(59, 246, 59, 0.1), rgba(34, 197, 94, 0.05))',
-                  borderBottom: '1px solid rgba(59, 246, 59, 0.2)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.3rem', fontWeight: '800', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontSize: '1.5rem' }}>📍</span>
-                      Tracking de Conductores en Tiempo Real
-                    </h3>
-                    <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                      Visualiza la ubicación GPS de todos los conductores activos de la flota
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.5rem 1rem',
-                      background: 'rgba(59, 246, 59, 0.1)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(59, 246, 59, 0.3)'
-                    }}>
-                      <div style={{
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        backgroundColor: '#3bf63b',
-                        animation: 'pulse 2s infinite'
-                      }}></div>
-                      <span style={{ fontSize: '0.85rem', color: '#3bf63b', fontWeight: '700' }}>
-                        {rutas.filter(r => r.estado === 'EN_CURSO').length} conductores activos
-                      </span>
-                    </div>
-                    <button
-                      onClick={cargarDatos}
-                      className={styles.submitButton}
-                      style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}
-                    >
-                      🔄 Actualizar
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ height: '550px', position: 'relative' }}>
-                  <MapTrackingGlobal
-                    rutasActivas={rutas.filter(r => r.estado === 'EN_CURSO' || r.estado === 'PLANIFICADA')}
-                    onRutaClick={(rutaId) => router.push(`/ruta/${rutaId}`)}
-                  />
-                </div>
-              </div>
-
-              {/* Lista de rutas activas debajo del mapa */}
-              <div style={{ marginTop: '2rem' }}>
-                <h4 style={{ marginBottom: '1rem', color: '#9ca3af', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                  Rutas con Tracking Activo ({rutas.filter(r => r.estado === 'EN_CURSO').length})
-                </h4>
-                <div className={styles.grid}>
-                  {rutas.filter(r => r.estado === 'EN_CURSO').map(ruta => {
-                    const hasActiveGPS = !!(ruta.latitudActual && ruta.longitudActual);
-                    const connectionStatus = getConnectionStatus(ruta.ultimaActualizacionGPS, hasActiveGPS);
-
-                    return (
-                      <div
-                        key={ruta.id}
-                        className={styles.card}
-                        onClick={() => router.push(`/ruta/${ruta.id}`)}
-                        style={{
-                          cursor: 'pointer',
-                          borderLeft: `4px solid ${connectionStatus.color}`,
-                          background: 'linear-gradient(145deg, rgba(30,30,40,0.95), rgba(20,20,25,0.95))'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <div style={{
-                              width: '10px',
-                              height: '10px',
-                              borderRadius: '50%',
-                              backgroundColor: connectionStatus.color,
-                              animation: connectionStatus.status === 'online' ? 'pulse 1.5s infinite' : 'none',
-                              boxShadow: connectionStatus.status === 'online' ? `0 0 10px ${connectionStatus.color}` : 'none'
-                            }}></div>
-                            <span style={{ fontSize: '0.75rem', color: connectionStatus.color, fontWeight: '700' }}>
-                              {connectionStatus.status === 'online' ? '🟢 ONLINE' :
-                                connectionStatus.status === 'idle' ? '🟡 INACTIVO' : '⚫ OFFLINE'}
-                            </span>
-                          </div>
-                          <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>
-                            #{ruta.id?.slice(-6).toUpperCase()}
-                          </span>
-                        </div>
-
-                        <h4 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.5rem' }}>
-                          {ruta.origen} → {ruta.destino}
-                        </h4>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#9ca3af' }}>
-                          <span>Vehículo: {ruta.vehiculoId?.slice(-6) || 'N/A'}</span>
-                          <span style={{ color: connectionStatus.color, fontWeight: '600' }}>
-                            📡 {connectionStatus.text}
-                          </span>
-                        </div>
-
-                        {ruta.latitudActual && ruta.longitudActual && (
-                          <div style={{
-                            marginTop: '0.5rem',
-                            fontSize: '0.7rem',
-                            color: connectionStatus.color,
-                            background: `${connectionStatus.color}15`,
-                            padding: '0.4rem 0.6rem',
-                            borderRadius: '6px',
-                            textAlign: 'center',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                          }}>
-                            <span>📍 {ruta.latitudActual.toFixed(4)}, {ruta.longitudActual.toFixed(4)}</span>
-                            {ruta.ultimaActualizacionGPS && (
-                              <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>
-                                🕐 {new Date(ruta.ultimaActualizacionGPS).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {rutas.filter(r => r.estado === 'EN_CURSO').length === 0 && (
-                    <div style={{
-                      gridColumn: '1 / -1',
-                      textAlign: 'center',
-                      padding: '3rem',
-                      color: '#6b7280'
-                    }}>
-                      <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>🚗</div>
-                      <p>No hay conductores activos en este momento</p>
-                      <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                        Los conductores aparecerán aquí cuando inicien una ruta
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
+          </div>
+          {/* Botón CTA móvil */}
+          <button
+            className={styles.navCtaMobile}
+            onClick={() => router.push('/login')}
+          >
+            Iniciar Sesión
+          </button>
         </div>
-      </main>
-    </BackgroundMeteors>
+      </nav>
+
+      {/* Hero Section */}
+      <section className={styles.hero}>
+        <div className={`${styles.heroContent} ${isVisible ? styles.visible : ''}`}>
+          <div className={styles.heroTag}>
+            <span className={styles.tagIcon}><SparklesIcon /></span>
+            <span>La revolución en gestión de flotas</span>
+          </div>
+
+          <h1 className={styles.heroTitle}>
+            Gestiona tu flota
+            <span className={styles.gradientText}> con inteligencia</span>
+          </h1>
+
+          <p className={styles.heroSubtitle}>
+            CarCare Tracker es la solución completa para empresas que quieren
+            optimizar sus flotas, reducir costes y tener control total sobre
+            sus vehículos y conductores en tiempo real.
+          </p>
+
+          <div className={styles.heroCtas}>
+            <button
+              className={styles.primaryCta}
+              onClick={() => router.push('/login')}
+            >
+              <span>Iniciar Sesión</span>
+              <span className={styles.ctaArrow}><ArrowRightIcon /></span>
+            </button>
+            <a href="#download" className={styles.secondaryCta}>
+              <span className={styles.androidIcon}><SmartphoneIcon /></span>
+              <span>Descargar para Android</span>
+            </a>
+          </div>
+
+          <div className={styles.heroStats}>
+            {stats.map((stat, index) => (
+              <div key={index} className={styles.statItem}>
+                <span className={styles.statNumber}>{stat.number}</span>
+                <span className={styles.statLabel}>{stat.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Hero Visual */}
+        <div className={styles.heroVisual}>
+          <div className={styles.mockupContainer}>
+            <div className={styles.dashboardMockup}>
+              <div className={styles.mockupHeader}>
+                <div className={styles.mockupDots}>
+                  <span></span><span></span><span></span>
+                </div>
+                <span className={styles.mockupUrl}>carcare-tracker.app</span>
+              </div>
+              <div className={styles.mockupContent}>
+                <div className={styles.mockupSidebar}>
+                  <div className={styles.sidebarItem}></div>
+                  <div className={styles.sidebarItem}></div>
+                  <div className={styles.sidebarItem}></div>
+                </div>
+                <div className={styles.mockupMain}>
+                  <div className={styles.mockupCard}></div>
+                  <div className={styles.mockupCard}></div>
+                  <div className={styles.mockupMap}>
+                    <div className={styles.mapPin}></div>
+                    <div className={styles.mapPin} style={{ left: '60%', top: '40%' }}></div>
+                    <div className={styles.mapRoute}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className={styles.phoneMockup}>
+              <div className={styles.phoneNotch}></div>
+              <div className={styles.phoneContent}>
+                <div className={styles.phoneHeader}>
+                  <CarIcon />
+                  <span>Ruta Activa</span>
+                </div>
+                <div className={styles.phoneMap}></div>
+                <div className={styles.phoneStatus}>
+                  <span className={styles.liveIndicator}></span>
+                  <span>GPS Activo</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" className={styles.features}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionTag}>Características</span>
+          <h2 className={styles.sectionTitle}>
+            Todo lo que necesitas para tu flota
+          </h2>
+          <p className={styles.sectionSubtitle}>
+            Herramientas potentes diseñadas para optimizar cada aspecto de tu operación
+          </p>
+        </div>
+
+        <div className={styles.featuresGrid}>
+          {features.map((feature, index) => (
+            <div
+              key={index}
+              className={`${styles.featureCard} ${activeFeature === index ? styles.activeCard : ''}`}
+              onMouseEnter={() => setActiveFeature(index)}
+              style={{ '--accent-color': feature.color } as React.CSSProperties}
+            >
+              <div className={styles.featureIcon}>
+                {feature.icon}
+              </div>
+              <h3 className={styles.featureTitle}>{feature.title}</h3>
+              <p className={styles.featureDesc}>{feature.description}</p>
+              <div className={styles.featureGlow} />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* How It Works Section */}
+      <section id="how-it-works" className={styles.howItWorks}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionTag}>Cómo Funciona</span>
+          <h2 className={styles.sectionTitle}>
+            Tres pasos para comenzar
+          </h2>
+        </div>
+
+        <div className={styles.stepsContainer}>
+          <div className={styles.step}>
+            <div className={styles.stepNumber}>01</div>
+            <div className={styles.stepContent}>
+              <h3>Registra tu Flota</h3>
+              <p>Añade tus vehículos con sus datos: matrícula, modelo, kilometraje y tipo de combustible.</p>
+            </div>
+            <div className={styles.stepIcon}><CarIcon /></div>
+          </div>
+
+          <div className={styles.stepConnector}>
+            <div className={styles.connectorLine}></div>
+            <div className={styles.connectorDot}></div>
+          </div>
+
+          <div className={styles.step}>
+            <div className={styles.stepNumber}>02</div>
+            <div className={styles.stepContent}>
+              <h3>Descarga la App</h3>
+              <p>Tus conductores instalan la app Android para recibir rutas y enviar su ubicación GPS.</p>
+            </div>
+            <div className={styles.stepIcon}><SmartphoneIcon /></div>
+          </div>
+
+          <div className={styles.stepConnector}>
+            <div className={styles.connectorLine}></div>
+            <div className={styles.connectorDot}></div>
+          </div>
+
+          <div className={styles.step}>
+            <div className={styles.stepNumber}>03</div>
+            <div className={styles.stepContent}>
+              <h3>Controla Todo</h3>
+              <p>Monitoriza rutas en tiempo real, analiza datos y optimiza tu operación desde el panel web.</p>
+            </div>
+            <div className={styles.stepIcon}><ChartIcon /></div>
+          </div>
+        </div>
+      </section>
+
+      {/* Download Section */}
+      <section id="download" className={styles.download}>
+        <div className={styles.downloadContent}>
+          <div className={styles.downloadInfo}>
+            <span className={styles.sectionTag}>Disponible ahora</span>
+            <h2 className={styles.downloadTitle}>
+              Descarga la app para{" "}
+              <span className={styles.gradientText}>Android</span>
+            </h2>
+            <p className={styles.downloadDesc}>
+              La aplicación para conductores permite recibir rutas asignadas,
+              enviar ubicación GPS en tiempo real y comunicarse con el panel central.
+            </p>
+
+            <div className={styles.appFeatures}>
+              <div className={styles.appFeature}>
+                <span className={styles.checkIcon}><CheckIcon /></span>
+                <span>GPS en tiempo real</span>
+              </div>
+              <div className={styles.appFeature}>
+                <span className={styles.checkIcon}><CheckIcon /></span>
+                <span>Notificaciones de rutas</span>
+              </div>
+              <div className={styles.appFeature}>
+                <span className={styles.checkIcon}><CheckIcon /></span>
+                <span>Chat integrado</span>
+              </div>
+              <div className={styles.appFeature}>
+                <span className={styles.checkIcon}><CheckIcon /></span>
+                <span>Modo offline</span>
+              </div>
+            </div>
+
+            <div className={styles.downloadButtons}>
+              <button className={styles.downloadBtn}>
+                <div className={styles.downloadBtnContent}>
+                  <span className={styles.downloadBtnIcon}><AndroidIcon /></span>
+                  <div className={styles.downloadBtnText}>
+                    <span className={styles.downloadBtnLabel}>Descargar para</span>
+                    <span className={styles.downloadBtnPlatform}>Android</span>
+                  </div>
+                </div>
+              </button>
+              <div className={styles.downloadNote}>
+                <PackageIcon />
+                <span>APK disponible para descarga directa</span>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.downloadVisual}>
+            <div className={styles.downloadPhone}>
+              <div className={styles.phoneFrame}>
+                <div className={styles.phoneNotch}></div>
+                <div className={styles.phoneScreen}>
+                  <div className={styles.appHeader}>
+                    <span className={styles.appLogo}><CarIcon /></span>
+                    <span>CarCare Driver</span>
+                  </div>
+                  <div className={styles.appRoute}>
+                    <div className={styles.routeInfo}>
+                      <span className={styles.routeLabel}>Ruta Activa</span>
+                      <span className={styles.routeTitle}>Madrid → Barcelona</span>
+                    </div>
+                    <div className={styles.routeStatus}>
+                      <span className={styles.liveIndicator}></span>
+                      <span>En curso</span>
+                    </div>
+                  </div>
+                  <div className={styles.appMap}>
+                    <div className={styles.mapGradient}></div>
+                  </div>
+                  <div className={styles.appStats}>
+                    <div className={styles.appStat}>
+                      <span className={styles.appStatValue}>623</span>
+                      <span className={styles.appStatLabel}>km restantes</span>
+                    </div>
+                    <div className={styles.appStat}>
+                      <span className={styles.appStatValue}>5h 30m</span>
+                      <span className={styles.appStatLabel}>tiempo est.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className={styles.phoneGlow}></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className={styles.ctaSection}>
+        <div className={styles.ctaContent}>
+          <h2 className={styles.ctaTitle}>
+            ¿Listo para optimizar tu flota?
+          </h2>
+          <p className={styles.ctaSubtitle}>
+            Comienza hoy mismo y descubre cómo CarCare Tracker puede transformar tu operación
+          </p>
+          <button
+            className={styles.ctaButton}
+            onClick={() => router.push('/login')}
+          >
+            <span>Comenzar Ahora</span>
+            <span className={styles.ctaArrow}><ArrowRightIcon /></span>
+          </button>
+        </div>
+        <div className={styles.ctaOrbs}>
+          <div className={styles.ctaOrb1}></div>
+          <div className={styles.ctaOrb2}></div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className={styles.footer}>
+        <div className={styles.footerContent}>
+          <div className={styles.footerBrand}>
+            <div className={styles.logo}>
+              <span className={styles.logoIcon}><CarIcon /></span>
+              <span className={styles.logoText}>./CarCare Tracker</span>
+            </div>
+            <p className={styles.footerDesc}>
+              Gestión de flotas inteligente para empresas modernas.
+            </p>
+          </div>
+          <div className={styles.footerLinks}>
+            <div className={styles.footerColumn}>
+              <h4>Producto</h4>
+              <a href="#features">Características</a>
+              <a href="#download">Descargar App</a>
+              <a href="#how-it-works">Cómo Funciona</a>
+            </div>
+            <div className={styles.footerColumn}>
+              <h4>Empresa</h4>
+              <a href="#">Sobre Nosotros</a>
+              <a href="#">Contacto</a>
+              <a href="#">Blog</a>
+            </div>
+            <div className={styles.footerColumn}>
+              <h4>Legal</h4>
+              <a href="#">Privacidad</a>
+              <a href="#">Términos</a>
+              <a href="#">Cookies</a>
+            </div>
+          </div>
+        </div>
+        <div className={styles.footerBottom}>
+          <span>© 2026 CarCare Tracker. Todos los derechos reservados.</span>
+        </div>
+      </footer>
+    </main>
   );
 }
