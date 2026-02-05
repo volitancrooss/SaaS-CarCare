@@ -28,6 +28,8 @@ interface Ruta {
     latitudActual: number;
     longitudActual: number;
     desviado: boolean;
+    velocidadActualKmh?: number;
+    distanciaRestanteKm?: number;
 }
 
 const API_URL = typeof window !== 'undefined' && window.location.hostname === '10.0.2.2'
@@ -443,14 +445,40 @@ export default function RutaTracking() {
                                 )}
 
                                 <div style={{ display: 'grid', gap: '1rem' }}>
+                                    {/* Velocidad Actual - DATOS REALES */}
                                     <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)' }}>
                                         <span style={{ display: 'block', fontSize: '0.65rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.4rem' }}>Velocidad Actual</span>
-                                        <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#fff' }}>85 <span style={{ fontSize: '0.8rem', color: '#4b5563' }}>KM/H</span></span>
+                                        <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#fff' }}>
+                                            {ruta.velocidadActualKmh !== undefined && ruta.velocidadActualKmh !== null
+                                                ? ruta.velocidadActualKmh.toFixed(0)
+                                                : '--'}
+                                            {' '}
+                                            <span style={{ fontSize: '0.8rem', color: '#4b5563' }}>KM/H</span>
+                                        </span>
+                                        {ruta.velocidadActualKmh === 0 && (
+                                            <div style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.3rem' }}>
+                                                🟡 Vehículo detenido
+                                            </div>
+                                        )}
                                     </div>
 
+                                    {/* Distancia Restante - DATOS REALES */}
                                     <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)' }}>
                                         <span style={{ display: 'block', fontSize: '0.65rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.4rem' }}>Distancia Restante</span>
-                                        <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#fff' }}>{(ruta.distanciaEstimadaKm * 0.35).toFixed(1)} <span style={{ fontSize: '0.8rem', color: '#4b5563' }}>KM</span></span>
+                                        <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#fff' }}>
+                                            {ruta.distanciaRestanteKm !== undefined && ruta.distanciaRestanteKm !== null
+                                                ? ruta.distanciaRestanteKm.toFixed(1)
+                                                : (ruta.latitudActual && ruta.latitudDestino
+                                                    ? ruta.distanciaEstimadaKm.toFixed(1)
+                                                    : '--')}
+                                            {' '}
+                                            <span style={{ fontSize: '0.8rem', color: '#4b5563' }}>KM</span>
+                                        </span>
+                                        {ruta.distanciaRestanteKm !== undefined && ruta.distanciaRestanteKm < 1 && (
+                                            <div style={{ fontSize: '0.7rem', color: '#22c55e', marginTop: '0.3rem' }}>
+                                                🎯 Llegando al destino
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)' }}>

@@ -31,6 +31,10 @@ public class Ruta {
     
     // Timestamp de la última actualización GPS recibida
     private String ultimaActualizacionGPS;
+    
+    // Datos calculados en tiempo real
+    private Double velocidadActualKmh; // Velocidad calculada en km/h
+    private Double distanciaRestanteKm; // Distancia restante hasta el destino
 
     // Getters y Setters manuales para asegurar compatibilidad
     public String getId() { return id; }
@@ -77,4 +81,10 @@ public class Ruta {
     
     public String getUltimaActualizacionGPS() { return ultimaActualizacionGPS; }
     public void setUltimaActualizacionGPS(String ultimaActualizacionGPS) { this.ultimaActualizacionGPS = ultimaActualizacionGPS; }
+    
+    public Double getVelocidadActualKmh() { return velocidadActualKmh; }
+    public void setVelocidadActualKmh(Double velocidadActualKmh) { this.velocidadActualKmh = velocidadActualKmh; }
+    
+    public Double getDistanciaRestanteKm() { return distanciaRestanteKm; }
+    public void setDistanciaRestanteKm(Double distanciaRestanteKm) { this.distanciaRestanteKm = distanciaRestanteKm; }
 }

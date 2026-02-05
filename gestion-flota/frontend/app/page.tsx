@@ -926,7 +926,7 @@ export default function Dashboard() {
                             }}></div>
                             <span style={{ fontSize: '0.75rem', color: connectionStatus.color, fontWeight: '700' }}>
                               {connectionStatus.status === 'online' ? '🟢 ONLINE' :
-                                connectionStatus.status === 'idle' ? '🟡 IDLE' : '⚫ OFFLINE'}
+                                connectionStatus.status === 'idle' ? '🟡 INACTIVO' : '⚫ OFFLINE'}
                             </span>
                           </div>
                           <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>

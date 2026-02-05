@@ -279,7 +279,7 @@ export default function MapTrackingGlobal({ rutasActivas, onRutaClick }: MapTrac
                                         textTransform: 'uppercase'
                                     }}>
                                         {timeAgo.status === 'online' ? 'ONLINE' :
-                                            timeAgo.status === 'idle' ? 'IDLE' : 'OFFLINE'}
+                                            timeAgo.status === 'idle' ? 'INACTIVO' : 'OFFLINE'}
                                     </div>
                                 </div>
 
