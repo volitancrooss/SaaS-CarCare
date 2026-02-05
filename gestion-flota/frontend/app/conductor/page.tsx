@@ -40,8 +40,12 @@ export default function ConductorDashboard() {
 
         try {
             const user = JSON.parse(userStr);
-            if (user && user.id) {
-                headers['X-User-Id'] = String(user.id);
+            // CRITICAL: If I am a driver, I must act on behalf of my company (empresaId)
+            // If I am an admin (testing), I use my own ID.
+            const tenantId = user.role === 'CONDUCTOR' ? user.empresaId : user.id;
+
+            if (tenantId) {
+                headers['X-User-Id'] = String(tenantId);
             }
         } catch (e) {
             console.error("Error parsing user from localStorage", e);
@@ -84,7 +88,7 @@ export default function ConductorDashboard() {
             } else {
                 if (res.status === 401 || res.status === 403) {
                     toast.error("Sesión expirada");
-                    router.push("/login");
+                    router.push("/conductor/login");
                     return;
                 }
                 throw new Error(`Error del servidor: ${res.status} ${res.statusText}`);
@@ -110,7 +114,7 @@ export default function ConductorDashboard() {
         const userStr = localStorage.getItem("user");
         if (!userStr) {
             toast.error("Debes iniciar sesión para acceder al panel de conductor");
-            router.push("/login");
+            router.push("/conductor/login");
             return;
         }
 

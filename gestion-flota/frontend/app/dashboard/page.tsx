@@ -104,8 +104,22 @@ export default function Dashboard() {
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    toast.info("Sesión cerrada");
+    // Check if user is conductor to redirect correctly
+    try {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        localStorage.removeItem("user");
+        toast.info("Sesión cerrada");
+        if (user.role === 'CONDUCTOR') {
+          router.push("/conductor/login");
+          return;
+        }
+      }
+    } catch (e) {
+      localStorage.removeItem("user");
+    }
+
     router.push("/login");
   };
 

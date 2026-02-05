@@ -27,4 +27,10 @@ public class Usuario {
     private String nombreEmpresa;
     
     private String fechaRegistro = java.time.LocalDate.now().toString();
+
+    // Roles: STRICTLY "ADMIN" or "CONDUCTOR"
+    private String role; 
+    
+    // For drivers, this stores the ID of the company (Admin) they belong to
+    private String empresaId;
 }

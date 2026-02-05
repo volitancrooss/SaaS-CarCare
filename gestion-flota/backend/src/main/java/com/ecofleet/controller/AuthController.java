@@ -33,10 +33,50 @@ public class AuthController {
         // 2. Encriptar la contraseña antes de guardar
         usuario.setPassword(passwordEncoder.encode(usuario.getPassword()));
         
-        // 3. Guardar usuario
+        // 3. Set default role as ADMIN (Empresa) if not present
+        if (usuario.getRole() == null || usuario.getRole().isEmpty()) {
+            usuario.setRole("ADMIN");
+        }
+        
+        // 4. Guardar usuario
         usuarioRepository.save(usuario);
 
         return ResponseEntity.ok(Map.of("message", "Usuario registrado correctamente"));
+    }
+
+    @PostMapping("/register/conductor")
+    public ResponseEntity<?> registerConductor(@RequestBody Map<String, String> payload) {
+        String email = payload.get("email");
+        String password = payload.get("password");
+        String nombre = payload.get("nombre");
+        String empresaEmail = payload.get("empresaEmail"); // Email of the company admin to link to
+
+        if (email == null || password == null || nombre == null || empresaEmail == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Todos los campos son obligatorios"));
+        }
+
+        if (usuarioRepository.existsByEmail(email)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "El email ya está registrado"));
+        }
+
+        // Find the company admin
+        Optional<Usuario> adminOpt = usuarioRepository.findByEmail(empresaEmail);
+        if (adminOpt.isEmpty()) {
+             return ResponseEntity.badRequest().body(Map.of("error", "No se encontró ninguna empresa con ese email"));
+        }
+        Usuario admin = adminOpt.get();
+
+        Usuario conductor = new Usuario();
+        conductor.setEmail(email);
+        conductor.setPassword(passwordEncoder.encode(password));
+        conductor.setNombre(nombre);
+        conductor.setRole("CONDUCTOR");
+        conductor.setEmpresaId(admin.getId()); // LINK TO ADMIN
+        conductor.setNombreEmpresa(admin.getNombreEmpresa()); // Denormalize company name for UI convenience
+
+        usuarioRepository.save(conductor);
+
+        return ResponseEntity.ok(Map.of("message", "Conductor registrado y vinculado correctamente"));
     }
 
     @PostMapping("/login")
@@ -65,6 +105,10 @@ public class AuthController {
             response.put("email", usuario.getEmail());
             response.put("nombre", usuario.getNombre());
             response.put("nombreEmpresa", usuario.getNombreEmpresa());
+            
+            // New fields for frontend logic
+            response.put("role", usuario.getRole());
+            response.put("empresaId", usuario.getEmpresaId()); // Will be null for ADMINs, populated for CONDUCTORs
             
             return ResponseEntity.ok(response);
         } else {
