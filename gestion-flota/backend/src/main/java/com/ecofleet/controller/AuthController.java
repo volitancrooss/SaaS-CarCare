@@ -1,7 +1,9 @@
 package com.ecofleet.controller;
 
 import com.ecofleet.model.Usuario;
+import com.ecofleet.model.Conductor;
 import com.ecofleet.repository.UsuarioRepository;
+import com.ecofleet.repository.ConductorRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -14,6 +16,15 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Controlador de autenticación.
+ * 
+ * ENDPOINTS:
+ * - POST /api/auth/register          → Registro de ADMINS (colección: usuarios)
+ * - POST /api/auth/login             → Login de ADMINS (colección: usuarios)
+ * - POST /api/auth/register/conductor → Registro de CONDUCTORES (colección: conductores)
+ * - POST /api/auth/login/conductor   → Login de CONDUCTORES (colección: conductores)
+ */
 @RestController
 @RequestMapping("/api/auth")
 @CrossOrigin(origins = "*")
@@ -23,172 +34,208 @@ public class AuthController {
 
     @Autowired
     private UsuarioRepository usuarioRepository;
+    
+    @Autowired
+    private ConductorRepository conductorRepository;
 
-    // Encriptador de contraseñas seguro
     private BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ADMINISTRADORES (Colección: usuarios)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Registro de administradores/empresas.
+     * Guarda en colección: usuarios
+     */
     @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody Usuario usuario) {
-        logger.info("═══ INICIO REGISTRO ADMIN ═══");
+    public ResponseEntity<?> registerAdmin(@Valid @RequestBody Usuario usuario) {
+        logger.info("═══ REGISTRO ADMIN ═══");
         logger.info("Email: {}", usuario.getEmail());
         
-        // 1. Validar si el email ya existe
         if (usuarioRepository.existsByEmail(usuario.getEmail())) {
             logger.warn("Email ya registrado: {}", usuario.getEmail());
             return ResponseEntity.badRequest().body(Map.of("error", "El email ya está registrado"));
         }
 
-        // 2. Encriptar la contraseña antes de guardar
         usuario.setPassword(passwordEncoder.encode(usuario.getPassword()));
+        usuario.setRole("ADMIN");
         
-        // 3. Set default role as ADMIN (Empresa) if not present
-        if (usuario.getRole() == null || usuario.getRole().isEmpty()) {
-            usuario.setRole("ADMIN");
-        }
-        
-        // 4. Guardar usuario
         Usuario saved = usuarioRepository.save(usuario);
-        logger.info("✓ Admin registrado exitosamente | ID: {}", saved.getId());
-        logger.info("═══ FIN REGISTRO ADMIN ═══");
+        logger.info("✓ Admin registrado | ID: {}", saved.getId());
 
         return ResponseEntity.ok(Map.of(
-            "message", "Usuario registrado correctamente",
+            "message", "Empresa registrada correctamente",
             "id", saved.getId()
         ));
     }
 
-    @PostMapping("/register/conductor")
-    public ResponseEntity<?> registerConductor(@RequestBody Map<String, String> payload) {
-        logger.info("═══ INICIO REGISTRO CONDUCTOR ═══");
-        logger.info("Payload recibido: {}", payload);
-        
-        String email = payload.get("email");
-        String password = payload.get("password");
-        String nombre = payload.get("nombre");
-        String empresaEmail = payload.get("empresaEmail"); // Email of the company admin to link to
-
-        // Validación exhaustiva de campos
-        if (email == null || email.trim().isEmpty()) {
-            logger.error("Error: Email del conductor vacío");
-            return ResponseEntity.badRequest().body(Map.of("error", "El email del conductor es obligatorio"));
-        }
-        if (password == null || password.trim().isEmpty()) {
-            logger.error("Error: Contraseña vacía");
-            return ResponseEntity.badRequest().body(Map.of("error", "La contraseña es obligatoria"));
-        }
-        if (password.length() < 6) {
-            logger.error("Error: Contraseña muy corta ({})", password.length());
-            return ResponseEntity.badRequest().body(Map.of("error", "La contraseña debe tener al menos 6 caracteres"));
-        }
-        if (nombre == null || nombre.trim().isEmpty()) {
-            logger.error("Error: Nombre vacío");
-            return ResponseEntity.badRequest().body(Map.of("error", "El nombre es obligatorio"));
-        }
-        if (empresaEmail == null || empresaEmail.trim().isEmpty()) {
-            logger.error("Error: Email de empresa vacío");
-            return ResponseEntity.badRequest().body(Map.of("error", "El email de la empresa es obligatorio"));
-        }
-
-        logger.info("Validación de campos completada ✓");
-        
-        // Verificar si el email del conductor ya existe
-        if (usuarioRepository.existsByEmail(email.trim())) {
-            logger.warn("Email del conductor ya registrado: {}", email);
-            return ResponseEntity.badRequest().body(Map.of("error", "El email ya está registrado"));
-        }
-
-        logger.info("Email del conductor disponible ✓");
-
-        // Find the company admin
-        logger.info("Buscando empresa con email: {}", empresaEmail.trim());
-        Optional<Usuario> adminOpt = usuarioRepository.findByEmail(empresaEmail.trim());
-        if (adminOpt.isEmpty()) {
-            logger.error("Empresa no encontrada con email: {}", empresaEmail);
-            return ResponseEntity.badRequest().body(Map.of("error", "No se encontró ninguna empresa con ese email. Verifica el email del administrador."));
-        }
-        Usuario admin = adminOpt.get();
-        
-        // Verificar que sea realmente un ADMIN
-        if (!"ADMIN".equals(admin.getRole())) {
-            logger.error("El usuario {} no es ADMIN, es: {}", empresaEmail, admin.getRole());
-            return ResponseEntity.badRequest().body(Map.of("error", "El email proporcionado no corresponde a una cuenta de administrador"));
-        }
-
-        logger.info("Empresa encontrada ✓ | ID: {} | Nombre: {}", admin.getId(), admin.getNombreEmpresa());
-
-        // Crear conductor
-        Usuario conductor = new Usuario();
-        conductor.setEmail(email.trim());
-        conductor.setPassword(passwordEncoder.encode(password));
-        conductor.setNombre(nombre.trim());
-        conductor.setRole("CONDUCTOR");
-        conductor.setEmpresaId(admin.getId()); // LINK TO ADMIN
-        conductor.setNombreEmpresa(admin.getNombreEmpresa()); // Denormalize company name for UI convenience
-
-        logger.info("Guardando conductor en base de datos...");
-        Usuario conductorGuardado = usuarioRepository.save(conductor);
-        
-        logger.info("✓ CONDUCTOR REGISTRADO EXITOSAMENTE");
-        logger.info("ID: {}", conductorGuardado.getId());
-        logger.info("Nombre: {}", conductorGuardado.getNombre());
-        logger.info("Email: {}", conductorGuardado.getEmail());
-        logger.info("EmpresaId: {}", conductorGuardado.getEmpresaId());
-        logger.info("═══ FIN REGISTRO CONDUCTOR ═══");
-
-        return ResponseEntity.ok(Map.of(
-            "message", "Conductor registrado y vinculado correctamente",
-            "conductorId", conductorGuardado.getId(),
-            "nombreEmpresa", conductorGuardado.getNombreEmpresa() != null ? conductorGuardado.getNombreEmpresa() : ""
-        ));
-    }
-
+    /**
+     * Login de administradores.
+     * Busca en colección: usuarios
+     */
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, String> credentials) {
-        logger.info("═══ INICIO LOGIN ═══");
+    public ResponseEntity<?> loginAdmin(@RequestBody Map<String, String> credentials) {
+        logger.info("═══ LOGIN ADMIN ═══");
         
         String email = credentials.get("email");
         String password = credentials.get("password");
 
-        logger.info("Intento de login para email: {}", email);
-
-        if (email == null || email.trim().isEmpty() || password == null || password.trim().isEmpty()) {
-            logger.error("Error: Email o contraseña vacíos");
+        if (email == null || password == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Email y contraseña son obligatorios"));
         }
 
-        // 1. Buscar usuario
+        logger.info("Buscando admin: {}", email);
         Optional<Usuario> usuarioOpt = usuarioRepository.findByEmail(email.trim());
 
         if (usuarioOpt.isEmpty()) {
-            logger.warn("Usuario no encontrado: {}", email);
+            logger.warn("Admin no encontrado: {}", email);
             return ResponseEntity.status(401).body(Map.of("error", "Credenciales inválidas"));
         }
 
         Usuario usuario = usuarioOpt.get();
-        logger.info("Usuario encontrado | ID: {} | Nombre: {} | Role: {}", usuario.getId(), usuario.getNombre(), usuario.getRole());
 
-        // 2. Verificar contraseña
         if (passwordEncoder.matches(password, usuario.getPassword())) {
-            logger.info("✓ Login exitoso para: {}", email);
+            logger.info("✓ Login admin exitoso: {}", email);
             
-            // Login exitoso: Devolvemos los datos del usuario (menos la contraseña)
             Map<String, Object> response = new HashMap<>();
             response.put("id", usuario.getId());
             response.put("email", usuario.getEmail());
             response.put("nombre", usuario.getNombre());
             response.put("nombreEmpresa", usuario.getNombreEmpresa());
-            
-            // New fields for frontend logic
-            response.put("role", usuario.getRole());
-            response.put("empresaId", usuario.getEmpresaId()); // Will be null for ADMINs, populated for CONDUCTORs
-            
-            logger.info("Respuesta enviada: {}", response);
-            logger.info("═══ FIN LOGIN (EXITOSO) ═══");
+            response.put("role", "ADMIN");
+            response.put("empresaId", null);
             
             return ResponseEntity.ok(response);
         } else {
-            logger.warn("Contraseña incorrecta para: {}", email);
-            logger.info("═══ FIN LOGIN (FALLIDO) ═══");
+            logger.warn("Contraseña incorrecta para admin: {}", email);
+            return ResponseEntity.status(401).body(Map.of("error", "Credenciales inválidas"));
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONDUCTORES (Colección: conductores)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Registro de conductores.
+     * Guarda en colección: conductores
+     */
+    @PostMapping("/register/conductor")
+    public ResponseEntity<?> registerConductor(@RequestBody Map<String, String> payload) {
+        logger.info("═══ REGISTRO CONDUCTOR ═══");
+        
+        String email = payload.get("email");
+        String password = payload.get("password");
+        String nombre = payload.get("nombre");
+        String empresaEmail = payload.get("empresaEmail");
+
+        // Validaciones
+        if (email == null || email.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "El email es obligatorio"));
+        }
+        if (password == null || password.length() < 6) {
+            return ResponseEntity.badRequest().body(Map.of("error", "La contraseña debe tener mínimo 6 caracteres"));
+        }
+        if (nombre == null || nombre.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "El nombre es obligatorio"));
+        }
+        if (empresaEmail == null || empresaEmail.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "El email de la empresa es obligatorio"));
+        }
+
+        email = email.trim().toLowerCase();
+        empresaEmail = empresaEmail.trim().toLowerCase();
+
+        // Verificar que no exista
+        if (conductorRepository.existsByEmail(email)) {
+            logger.warn("Conductor ya existe: {}", email);
+            return ResponseEntity.badRequest().body(Map.of("error", "Este email ya está registrado como conductor"));
+        }
+
+        // Buscar la empresa (admin)
+        logger.info("Buscando empresa: {}", empresaEmail);
+        Optional<Usuario> adminOpt = usuarioRepository.findByEmail(empresaEmail);
+        if (adminOpt.isEmpty()) {
+            logger.error("Empresa no encontrada: {}", empresaEmail);
+            return ResponseEntity.badRequest().body(Map.of("error", "No existe ninguna empresa con ese email"));
+        }
+        
+        Usuario admin = adminOpt.get();
+        if (!"ADMIN".equals(admin.getRole())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "El email no corresponde a una cuenta de empresa"));
+        }
+
+        // Crear conductor
+        Conductor conductor = new Conductor();
+        conductor.setEmail(email);
+        conductor.setPassword(passwordEncoder.encode(password));
+        conductor.setNombre(nombre.trim());
+        conductor.setEmpresaId(admin.getId());
+        conductor.setNombreEmpresa(admin.getNombreEmpresa());
+        conductor.setActivo(true);
+
+        Conductor saved = conductorRepository.save(conductor);
+        
+        logger.info("✓ CONDUCTOR REGISTRADO");
+        logger.info("  ID: {}", saved.getId());
+        logger.info("  Email: {}", saved.getEmail());
+        logger.info("  Empresa: {}", saved.getNombreEmpresa());
+
+        return ResponseEntity.ok(Map.of(
+            "message", "Conductor registrado correctamente",
+            "conductorId", saved.getId(),
+            "nombreEmpresa", saved.getNombreEmpresa() != null ? saved.getNombreEmpresa() : ""
+        ));
+    }
+
+    /**
+     * Login de conductores (Android).
+     * Busca en colección: conductores
+     */
+    @PostMapping("/login/conductor")
+    public ResponseEntity<?> loginConductor(@RequestBody Map<String, String> credentials) {
+        logger.info("═══ LOGIN CONDUCTOR ═══");
+        
+        String email = credentials.get("email");
+        String password = credentials.get("password");
+
+        if (email == null || password == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Email y contraseña son obligatorios"));
+        }
+
+        email = email.trim().toLowerCase();
+        logger.info("Buscando conductor: {}", email);
+        
+        Optional<Conductor> conductorOpt = conductorRepository.findByEmail(email);
+
+        if (conductorOpt.isEmpty()) {
+            logger.warn("Conductor no encontrado: {}", email);
+            return ResponseEntity.status(401).body(Map.of("error", "Credenciales inválidas"));
+        }
+
+        Conductor conductor = conductorOpt.get();
+        
+        // Verificar si está activo
+        if (!conductor.isActivo()) {
+            logger.warn("Conductor desactivado: {}", email);
+            return ResponseEntity.status(403).body(Map.of("error", "Tu cuenta ha sido desactivada. Contacta a tu empresa."));
+        }
+
+        if (passwordEncoder.matches(password, conductor.getPassword())) {
+            logger.info("✓ Login conductor exitoso: {}", email);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("id", conductor.getId());
+            response.put("email", conductor.getEmail());
+            response.put("nombre", conductor.getNombre());
+            response.put("nombreEmpresa", conductor.getNombreEmpresa());
+            response.put("role", "CONDUCTOR");
+            response.put("empresaId", conductor.getEmpresaId());
+            
+            return ResponseEntity.ok(response);
+        } else {
+            logger.warn("Contraseña incorrecta para conductor: {}", email);
             return ResponseEntity.status(401).body(Map.of("error", "Credenciales inválidas"));
         }
     }
