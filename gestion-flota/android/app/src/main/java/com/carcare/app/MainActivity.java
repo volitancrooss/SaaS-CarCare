@@ -20,9 +20,19 @@ import android.graphics.Bitmap;
 public class MainActivity extends Activity {
 
     private WebView mWebView;
-    private static final String API_URL = "https://saas-carcare-production.up.railway.app"; 
-    // Por defecto usamos localhost para pruebas, cámbiala si tienes el frontend en Railway
-    private static final String WEB_URL = "http://10.0.2.2:3000"; 
+    
+    // ═══ CONFIGURACIÓN DE URLS ═══
+    // Backend API (Railway - Producción con MongoDB)
+    private static final String API_URL = "https://saas-carcare-production.up.railway.app";
+    
+    // Frontend Web - CAMBIAR según entorno:
+    // Para DESARROLLO (emulador): "http://10.0.2.2:3000"
+    // Para PRODUCCIÓN (Railway): Usa la URL de tu frontend en Vercel/Railway
+    // Para DISPOSITIVO FÍSICO: Usa tu IP local, ej: "http://192.168.1.100:3000"
+    private static final String WEB_URL = "http://10.0.2.2:3000";
+    
+    // Ruta inicial - siempre al login de conductor
+    private static final String INITIAL_PATH = "/conductor/login"; 
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
@@ -88,8 +98,8 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Cargamos la URL del panel de conductores (interfaz optimizada para móvil)
-        mWebView.loadUrl(WEB_URL + "/conductor");
+        // Cargamos la URL del login de conductores
+        mWebView.loadUrl(WEB_URL + INITIAL_PATH);
     }
 
     public class WebAppInterface {
