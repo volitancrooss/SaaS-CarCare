@@ -32,7 +32,8 @@ export default function DriverLoginPage() {
     // Fetch con timeout de 15 segundos
     const fetchWithTimeout = async (url: string, options: RequestInit) => {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
+        // Aumentamos timeout a 60s para soportar cold starts de Railway
+        const timeout = setTimeout(() => controller.abort(), 60000);
 
         try {
             const res = await fetch(url, { ...options, signal: controller.signal });
@@ -41,7 +42,7 @@ export default function DriverLoginPage() {
         } catch (err: any) {
             clearTimeout(timeout);
             if (err.name === 'AbortError') {
-                throw new Error('Tiempo agotado. Verifica tu conexión.');
+                throw new Error('El servidor está tardando en responder. Puede estar iniciándose (Cold Start), por favor intenta de nuevo en unos segundos.');
             }
             throw err;
         }
