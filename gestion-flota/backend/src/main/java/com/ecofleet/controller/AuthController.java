@@ -121,72 +121,86 @@ public class AuthController {
      * Registro de conductores.
      * Guarda en colección: conductores
      */
+    @GetMapping("/health")
+    public ResponseEntity<?> healthCheck() {
+        return ResponseEntity.ok(Map.of("status", "UP", "version", "1.0.1", "collection", "conductores"));
+    }
+
+    /**
+     * Registro de conductores.
+     * Guarda en colección: conductores
+     */
     @PostMapping("/register/conductor")
     public ResponseEntity<?> registerConductor(@RequestBody Map<String, String> payload) {
-        logger.info("═══ REGISTRO CONDUCTOR ═══");
-        
-        String email = payload.get("email");
-        String password = payload.get("password");
-        String nombre = payload.get("nombre");
-        String empresaEmail = payload.get("empresaEmail");
+        try {
+            logger.info("═══ REGISTRO CONDUCTOR ═══");
+            
+            String email = payload.get("email");
+            String password = payload.get("password");
+            String nombre = payload.get("nombre");
+            String empresaEmail = payload.get("empresaEmail");
 
-        // Validaciones
-        if (email == null || email.trim().isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "El email es obligatorio"));
-        }
-        if (password == null || password.length() < 6) {
-            return ResponseEntity.badRequest().body(Map.of("error", "La contraseña debe tener mínimo 6 caracteres"));
-        }
-        if (nombre == null || nombre.trim().isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "El nombre es obligatorio"));
-        }
-        if (empresaEmail == null || empresaEmail.trim().isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "El email de la empresa es obligatorio"));
-        }
+            // Validaciones
+            if (email == null || email.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "El email es obligatorio"));
+            }
+            if (password == null || password.length() < 6) {
+                return ResponseEntity.badRequest().body(Map.of("error", "La contraseña debe tener mínimo 6 caracteres"));
+            }
+            if (nombre == null || nombre.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "El nombre es obligatorio"));
+            }
+            if (empresaEmail == null || empresaEmail.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "El email de la empresa es obligatorio"));
+            }
 
-        email = email.trim().toLowerCase();
-        empresaEmail = empresaEmail.trim().toLowerCase();
+            email = email.trim().toLowerCase();
+            empresaEmail = empresaEmail.trim().toLowerCase();
 
-        // Verificar que no exista
-        if (conductorRepository.existsByEmail(email)) {
-            logger.warn("Conductor ya existe: {}", email);
-            return ResponseEntity.badRequest().body(Map.of("error", "Este email ya está registrado como conductor"));
+            // Verificar que no exista
+            if (conductorRepository.existsByEmail(email)) {
+                logger.warn("Conductor ya existe: {}", email);
+                return ResponseEntity.badRequest().body(Map.of("error", "Este email ya está registrado como conductor"));
+            }
+
+            // Buscar la empresa (admin)
+            logger.info("Buscando empresa: {}", empresaEmail);
+            Optional<Usuario> adminOpt = usuarioRepository.findByEmail(empresaEmail);
+            if (adminOpt.isEmpty()) {
+                logger.error("Empresa no encontrada: {}", empresaEmail);
+                return ResponseEntity.badRequest().body(Map.of("error", "No existe ninguna empresa con ese email"));
+            }
+            
+            Usuario admin = adminOpt.get();
+            if (!"ADMIN".equals(admin.getRole())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "El email no corresponde a una cuenta de empresa"));
+            }
+
+            // Crear conductor
+            Conductor conductor = new Conductor();
+            conductor.setEmail(email);
+            conductor.setPassword(passwordEncoder.encode(password));
+            conductor.setNombre(nombre.trim());
+            conductor.setEmpresaId(admin.getId());
+            conductor.setNombreEmpresa(admin.getNombreEmpresa());
+            conductor.setActivo(true);
+
+            Conductor saved = conductorRepository.save(conductor);
+            
+            logger.info("✓ CONDUCTOR REGISTRADO");
+            logger.info("  ID: {}", saved.getId());
+            logger.info("  Email: {}", saved.getEmail());
+            logger.info("  Empresa: {}", saved.getNombreEmpresa());
+
+            return ResponseEntity.ok(Map.of(
+                "message", "Conductor registrado correctamente",
+                "conductorId", saved.getId(),
+                "nombreEmpresa", saved.getNombreEmpresa() != null ? saved.getNombreEmpresa() : ""
+            ));
+        } catch (Exception e) {
+            logger.error("Error en registro de conductor: ", e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Error interno del servidor: " + e.getMessage()));
         }
-
-        // Buscar la empresa (admin)
-        logger.info("Buscando empresa: {}", empresaEmail);
-        Optional<Usuario> adminOpt = usuarioRepository.findByEmail(empresaEmail);
-        if (adminOpt.isEmpty()) {
-            logger.error("Empresa no encontrada: {}", empresaEmail);
-            return ResponseEntity.badRequest().body(Map.of("error", "No existe ninguna empresa con ese email"));
-        }
-        
-        Usuario admin = adminOpt.get();
-        if (!"ADMIN".equals(admin.getRole())) {
-            return ResponseEntity.badRequest().body(Map.of("error", "El email no corresponde a una cuenta de empresa"));
-        }
-
-        // Crear conductor
-        Conductor conductor = new Conductor();
-        conductor.setEmail(email);
-        conductor.setPassword(passwordEncoder.encode(password));
-        conductor.setNombre(nombre.trim());
-        conductor.setEmpresaId(admin.getId());
-        conductor.setNombreEmpresa(admin.getNombreEmpresa());
-        conductor.setActivo(true);
-
-        Conductor saved = conductorRepository.save(conductor);
-        
-        logger.info("✓ CONDUCTOR REGISTRADO");
-        logger.info("  ID: {}", saved.getId());
-        logger.info("  Email: {}", saved.getEmail());
-        logger.info("  Empresa: {}", saved.getNombreEmpresa());
-
-        return ResponseEntity.ok(Map.of(
-            "message", "Conductor registrado correctamente",
-            "conductorId", saved.getId(),
-            "nombreEmpresa", saved.getNombreEmpresa() != null ? saved.getNombreEmpresa() : ""
-        ));
     }
 
     /**
